@@ -17,6 +17,8 @@ export interface AgentRequest {
   /** Mastra model-router id, e.g. "deepseek/deepseek-chat". */
   model: string;
   activeTab: WorkspaceMode;
+  /** Skills referenced (via /<slug>) in this turn; their instructions are applied. */
+  skills?: Array<{ name: string; instructions: string }>;
 }
 
 /** Streaming events pushed from main -> renderer for a single run. */

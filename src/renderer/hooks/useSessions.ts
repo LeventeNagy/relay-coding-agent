@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentMessage, ChatSession, SessionSummary, WorkspaceMode } from "../../shared/agent/types";
+import type { SkillRef } from "../../shared/skills/types";
 
 const createId = (prefix: string): string =>
   `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -24,7 +25,7 @@ export interface SessionsController {
   activeSessionId: string | null;
   messages: AgentMessage[];
   isStreaming: boolean;
-  send: (text: string) => void;
+  send: (text: string, skills?: SkillRef[]) => void;
   newSession: () => void;
   openSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -135,7 +136,7 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
   }, [mode, newSession]);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, skills?: SkillRef[]) => {
       const trimmed = text.trim();
       if (!trimmed || !model || streamingId) {
         return;
@@ -169,7 +170,13 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
 
       setMessages(nextMessages);
       setStreamingId(runId);
-      void window.agent.start({ runId, messages: history, model, activeTab: mode });
+      void window.agent.start({
+        runId,
+        messages: history,
+        model,
+        activeTab: mode,
+        skills: skills && skills.length > 0 ? skills : undefined
+      });
     },
     [model, mode, streamingId, persistActive]
   );

@@ -1,19 +1,23 @@
 import { ReactElement, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Mic, Plus, Search, SendHorizontal, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronDown, Mic, Plus, Search, SendHorizontal, SlidersHorizontal, Sparkles } from "lucide-react";
 import { buildModelOptions } from "../../shared/agent/providers";
 import { Conversation, ConversationContent } from "../components/ai-elements/conversation";
 import { Message, MessageContent } from "../components/ai-elements/message";
 import { useProviderModels } from "../hooks/useProviderModels";
 import type { SessionsController } from "../hooks/useSessions";
 import type { SettingsController } from "../hooks/useSettings";
+import type { SkillsController } from "../hooks/useSkills";
+import type { Skill, SkillRef } from "../../shared/skills/types";
 
 interface ChatViewProps {
   chat: SessionsController;
   settings: SettingsController;
+  skills: SkillsController;
   modeLabel: string;
 }
 
 const MODEL_RESULT_LIMIT = 60;
+const SLASH_RESULT_LIMIT = 8;
 
 const labelForModel = (model: string | null): string => {
   if (!model) {
@@ -23,13 +27,46 @@ const labelForModel = (model: string | null): string => {
   return tail || model;
 };
 
-export const ChatView = ({ chat, settings, modeLabel }: ChatViewProps): ReactElement => {
+/** Find the `/token` the caret is currently inside, if any. */
+const findSlashToken = (value: string, caret: number): { start: number; query: string } | null => {
+  let i = caret;
+  while (i > 0 && !/\s/.test(value[i - 1])) {
+    i -= 1;
+  }
+  const token = value.slice(i, caret);
+  if (token.startsWith("/")) {
+    return { start: i, query: token.slice(1) };
+  }
+  return null;
+};
+
+/** Resolve every `/slug` in the message to a unique skill reference. */
+const resolveSkillRefs = (value: string, skills: Skill[]): SkillRef[] => {
+  const found = new Map<string, SkillRef>();
+  const regex = /(?:^|\s)\/([a-z0-9-]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(value)) !== null) {
+    const slug = match[1].toLowerCase();
+    const skill = skills.find((s) => s.slug === slug);
+    if (skill) {
+      found.set(skill.id, { name: skill.name, instructions: skill.instructions });
+    }
+  }
+  return [...found.values()];
+};
+
+export const ChatView = ({ chat, settings, skills, modeLabel }: ChatViewProps): ReactElement => {
   const { state, setModel } = settings;
+  const skillList = skills.skills;
   const registryModels = useProviderModels();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashStart, setSlashStart] = useState(0);
+  const [slashIndex, setSlashIndex] = useState(0);
 
   const options = useMemo(
     () => buildModelOptions(state.configuredKeys, registryModels),
@@ -45,6 +82,16 @@ export const ChatView = ({ chat, settings, modeLabel }: ChatViewProps): ReactEle
       `${option.providerName} ${option.model}`.toLowerCase().includes(query)
     );
   }, [options, modelQuery]);
+
+  const slashMatches = useMemo(() => {
+    if (!slashOpen) {
+      return [];
+    }
+    const query = slashQuery.toLowerCase();
+    return skillList
+      .filter((skill) => `${skill.slug} ${skill.name}`.toLowerCase().includes(query))
+      .slice(0, SLASH_RESULT_LIMIT);
+  }, [slashOpen, slashQuery, skillList]);
 
   const hasMessages = chat.messages.length > 0;
   const hasModel = Boolean(state.activeModel) && options.some((option) => option.model === state.activeModel);
@@ -64,13 +111,49 @@ export const ChatView = ({ chat, settings, modeLabel }: ChatViewProps): ReactEle
     composer.style.height = `${Math.min(composer.scrollHeight, 180)}px`;
   };
 
+  const refreshSlash = (): void => {
+    const composer = composerRef.current;
+    if (!composer) {
+      return;
+    }
+    const token = findSlashToken(composer.value, composer.selectionStart ?? composer.value.length);
+    if (token && skillList.length > 0) {
+      setSlashStart(token.start);
+      setSlashQuery(token.query);
+      setSlashOpen(true);
+      setSlashIndex(0);
+    } else {
+      setSlashOpen(false);
+    }
+  };
+
+  const applySkill = (skill: Skill): void => {
+    const composer = composerRef.current;
+    if (!composer) {
+      return;
+    }
+    const value = composer.value;
+    const caret = composer.selectionStart ?? value.length;
+    const before = value.slice(0, slashStart);
+    const after = value.slice(caret);
+    const insert = `/${skill.slug} `;
+    composer.value = `${before}${insert}${after}`;
+    const newCaret = before.length + insert.length;
+    composer.setSelectionRange(newCaret, newCaret);
+    setSlashOpen(false);
+    composer.focus();
+    growComposer();
+  };
+
   const submit = (): void => {
     const composer = composerRef.current;
     if (!composer) {
       return;
     }
-    chat.send(composer.value);
+    const refs = resolveSkillRefs(composer.value, skillList);
+    chat.send(composer.value, refs);
     composer.value = "";
+    setSlashOpen(false);
     growComposer();
   };
 
@@ -86,14 +169,66 @@ export const ChatView = ({ chat, settings, modeLabel }: ChatViewProps): ReactEle
       <label className="sr-only" htmlFor="relay-chat-input">
         Message Relay
       </label>
+      {slashOpen && slashMatches.length > 0 && (
+        <ul className="slash-menu" role="listbox" aria-label="Skills">
+          {slashMatches.map((skill, index) => (
+            <li key={skill.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={index === slashIndex}
+                className={index === slashIndex ? "active" : ""}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  applySkill(skill);
+                }}
+              >
+                <Sparkles size={13} />
+                <span className="slash-name">/{skill.slug}</span>
+                <span className="slash-desc">{skill.description || skill.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <textarea
         id="relay-chat-input"
-        placeholder={hasModel ? "How can I help you today?" : "Add a provider key in Settings to start chatting"}
+        placeholder={
+          hasModel
+            ? "How can I help you today?  Type / for skills"
+            : "Add a provider key in Settings to start chatting"
+        }
         rows={2}
         ref={composerRef}
         disabled={!hasModel}
-        onInput={growComposer}
+        onInput={() => {
+          growComposer();
+          refreshSlash();
+        }}
+        onClick={refreshSlash}
         onKeyDown={(event) => {
+          if (slashOpen && slashMatches.length > 0) {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setSlashIndex((i) => (i + 1) % slashMatches.length);
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+              return;
+            }
+            if (event.key === "Enter" || event.key === "Tab") {
+              event.preventDefault();
+              applySkill(slashMatches[slashIndex]);
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setSlashOpen(false);
+              return;
+            }
+          }
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
             submit();

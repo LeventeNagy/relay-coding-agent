@@ -1,13 +1,16 @@
 import { CSSProperties, PointerEvent, ReactElement, useEffect, useState } from "react";
-import { Code2, Columns2, MessageCircle, Plus, Search, Settings, Trash2 } from "lucide-react";
+import { Blocks, Code2, Columns2, MessageCircle, Plus, Search, Settings, Trash2 } from "lucide-react";
 import { useSessions } from "./hooks/useSessions";
 import { useSettings } from "./hooks/useSettings";
+import { usePlugins } from "./hooks/usePlugins";
+import { useSkills } from "./hooks/useSkills";
 import { ChatView } from "./views/ChatView";
 import { SettingsView } from "./views/SettingsView";
+import { PluginsView } from "./views/PluginsView";
 import { availableModels } from "../shared/agent/providers";
 import type { WorkspaceMode } from "../shared/agent/types";
 
-type AppView = WorkspaceMode | "settings";
+type AppView = WorkspaceMode | "settings" | "plugins";
 
 const workspaceTabs: Array<{ id: WorkspaceMode; label: string; icon: typeof MessageCircle }> = [
   { id: "chat", label: "Chat", icon: MessageCircle },
@@ -32,6 +35,8 @@ const relativeTime = (iso: string): string => {
 
 export const App = (): ReactElement => {
   const settings = useSettings();
+  const plugins = usePlugins();
+  const skills = useSkills();
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>("chat");
   const [activeView, setActiveView] = useState<AppView>("chat");
   const [sidebarWidth, setSidebarWidth] = useState(320);
@@ -111,9 +116,9 @@ export const App = (): ReactElement => {
                   }}
                   aria-current={activeView === tab.id ? "page" : undefined}
                   aria-label={tab.label}
-                  data-tooltip={tab.label}
                 >
                   <Icon size={14} />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
@@ -163,6 +168,15 @@ export const App = (): ReactElement => {
 
           <div className="account-card">
             <button
+              className={activeView === "plugins" ? "settings-button active" : "settings-button"}
+              type="button"
+              onClick={() => setActiveView("plugins")}
+              aria-label="Open plugins"
+            >
+              <Blocks size={14} />
+              <span>Plugins</span>
+            </button>
+            <button
               className={activeView === "settings" ? "settings-button active" : "settings-button"}
               type="button"
               onClick={() => setActiveView("settings")}
@@ -175,8 +189,11 @@ export const App = (): ReactElement => {
         </aside>
 
         <main className="preview-canvas" aria-label="Workspace canvas">
-          {showChat && <ChatView chat={chat} settings={settings} modeLabel={activeWorkspaceLabel} />}
+          {showChat && (
+            <ChatView chat={chat} settings={settings} skills={skills} modeLabel={activeWorkspaceLabel} />
+          )}
           {activeView === "settings" && <SettingsView settings={settings} />}
+          {activeView === "plugins" && <PluginsView plugins={plugins} skills={skills} />}
         </main>
       </div>
     </div>

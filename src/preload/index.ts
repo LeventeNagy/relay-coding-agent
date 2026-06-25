@@ -9,6 +9,13 @@ import type {
   SettingsState,
   WorkspaceMode
 } from "../shared/agent/types";
+import type {
+  PluginCatalogEntry,
+  PluginInput,
+  PluginProbeResult,
+  PluginSummary
+} from "../shared/plugins/types";
+import type { Skill, SkillInput } from "../shared/skills/types";
 
 const agentApi = {
   /** Start a streaming run; returns the runId used to tag incoming events. */
@@ -59,12 +66,49 @@ const sessionsApi = {
   }
 };
 
+const pluginsApi = {
+  catalog(): Promise<PluginCatalogEntry[]> {
+    return ipcRenderer.invoke("plugins:catalog");
+  },
+  list(): Promise<PluginSummary[]> {
+    return ipcRenderer.invoke("plugins:list");
+  },
+  add(input: PluginInput): Promise<PluginSummary[]> {
+    return ipcRenderer.invoke("plugins:add", input);
+  },
+  probe(input: PluginInput): Promise<PluginProbeResult> {
+    return ipcRenderer.invoke("plugins:probe", input);
+  },
+  toggle(id: string, enabled: boolean): Promise<PluginSummary[]> {
+    return ipcRenderer.invoke("plugins:toggle", id, enabled);
+  },
+  remove(id: string): Promise<PluginSummary[]> {
+    return ipcRenderer.invoke("plugins:remove", id);
+  }
+};
+
+const skillsApi = {
+  list(): Promise<Skill[]> {
+    return ipcRenderer.invoke("skills:list");
+  },
+  save(input: SkillInput): Promise<Skill[]> {
+    return ipcRenderer.invoke("skills:save", input);
+  },
+  delete(id: string): Promise<Skill[]> {
+    return ipcRenderer.invoke("skills:delete", id);
+  }
+};
+
 contextBridge.exposeInMainWorld("agent", agentApi);
 contextBridge.exposeInMainWorld("settings", settingsApi);
 contextBridge.exposeInMainWorld("providers", providersApi);
 contextBridge.exposeInMainWorld("sessions", sessionsApi);
+contextBridge.exposeInMainWorld("plugins", pluginsApi);
+contextBridge.exposeInMainWorld("skills", skillsApi);
 
 export type AgentApi = typeof agentApi;
 export type SettingsApi = typeof settingsApi;
 export type ProvidersApi = typeof providersApi;
 export type SessionsApi = typeof sessionsApi;
+export type PluginsApi = typeof pluginsApi;
+export type SkillsApi = typeof skillsApi;

@@ -32,24 +32,55 @@ export interface StreamArgs {
   model: string;
   activeTab: WorkspaceMode;
   messages: AgentMessage[];
+  /** Namespaced MCP toolsets to inject for this run (from mcpManager). */
+  toolsets?: Record<string, Record<string, unknown>>;
+  /** Skills referenced this turn; appended to the system instructions. */
+  skills?: Array<{ name: string; instructions: string }>;
   onEvent: (event: AgentStreamEvent) => void;
 }
+
+/** Compose mode instructions with any referenced skills for this run. */
+const composeInstructions = (
+  mode: WorkspaceMode,
+  skills?: Array<{ name: string; instructions: string }>
+): string => {
+  const base = instructionsFor(mode);
+  if (!skills || skills.length === 0) {
+    return base;
+  }
+  const blocks = skills
+    .map((skill) => `## Skill: ${skill.name}\n${skill.instructions}`)
+    .join("\n\n");
+  return `${base}\n\nThe user invoked the following skill(s) for this request. Follow their guidance:\n\n${blocks}`;
+};
 
 /**
  * Streams a Mastra agent reply for a single run, emitting delta/done/error
  * events. API keys are expected to already be present in process.env (the
  * settings store injects them) so the Mastra model router can authenticate.
  */
-export const streamMessage = async ({ runId, model, activeTab, messages, onEvent }: StreamArgs): Promise<void> => {
+export const streamMessage = async ({
+  runId,
+  model,
+  activeTab,
+  messages,
+  toolsets,
+  skills,
+  onEvent
+}: StreamArgs): Promise<void> => {
   try {
     const agent = new Agent({
       id: "relay",
       name: "relay",
-      instructions: instructionsFor(activeTab),
+      instructions: composeInstructions(activeTab, skills),
       model
     });
 
-    const result = await agent.stream(toModelMessages(messages));
+    const hasTools = toolsets && Object.keys(toolsets).length > 0;
+    const modelMessages = toModelMessages(messages);
+    const result = hasTools
+      ? await agent.stream(modelMessages, { toolsets: toolsets as never })
+      : await agent.stream(modelMessages);
 
     let full = "";
     for await (const delta of result.textStream) {

@@ -1,0 +1,29 @@
+{
+  "name": "relay-coding-agent",
+  "version": "0.1.0",
+  "description": "Relay, a dark-mode Electron prototype for an AI coding agent using a Mastra-ready service boundary.",
+  "main": "out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "pnpm typecheck && electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@mastra/core": "latest",
+    "@vitejs/plugin-react": "latest",
+    "electron-vite": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "electron": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}

@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Relay — the open-source coding agent</title>
+    <meta
+      name="description"
+      content="Relay is an open-source desktop coding agent. Chat and Code with any model, bring your own key, runs locally."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ── Top nav ─────────────────────────────────────────── -->
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="wordmark" href="#top">Relay<span class="dot">.</span></a>
+        <nav class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#modes">Modes</a>
+          <a href="#models">Models</a>
+          <a href="#open-source">Open source</a>
+        </nav>
+        <div class="nav-cta">
+          <a class="link-tertiary" href="https://github.com/LeventeNagy/relay-coding-agent">GitHub</a>
+          <a class="btn-download" href="#download">Download</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Hero ────────────────────────────────────────────── -->
+    <main id="top">
+      <section class="hero container">
+        <span class="badge">Open source · Electron · Mastra</span>
+        <h1 class="display-mega">
+          The coding agent<br />that runs on <em>your</em> terms.
+        </h1>
+        <p class="hero-sub">
+          Relay is a desktop coding agent you actually own. Chat through a problem or
+          let it edit your code — with any model, your own API key, and nothing
+          leaving your machine.
+        </p>
+        <div class="hero-actions">
+          <a class="btn-download" href="#download">Download for desktop</a>
+          <a class="link-tertiary arrow" href="https://github.com/LeventeNagy/relay-coding-agent">
+            View source →
+          </a>
+        </div>
+
+        <!-- IDE mockup card -->
+        <div class="mockup">
+          <div class="mockup-bar">
+            <span class="traffic"></span><span class="traffic"></span><span class="traffic"></span>
+            <span class="mockup-title">Relay — Chat</span>
+          </div>
+          <div class="mockup-body">
+            <aside class="mockup-sidebar">
+              <button class="new-session">+ New session</button>
+              <div class="session active">Refactor auth flow</div>
+              <div class="session">Explain the build config</div>
+              <div class="session">Add streaming to chat</div>
+              <div class="session muted">Fix settings scrollbar</div>
+            </aside>
+            <div class="mockup-chat">
+              <div class="bubble user">Add a retry to the model router when it hits a 429.</div>
+              <div class="timeline">
+                <span class="pill thinking">Thinking</span>
+                <span class="pill read">Reading</span>
+                <span class="pill grep">Grepping</span>
+                <span class="pill edit">Editing</span>
+                <span class="pill done">Done</span>
+              </div>
+              <div class="bubble agent">
+                <p>Wrapped <code>agent.stream()</code> with exponential backoff. On a
+                rate-limit it now retries up to 3× before surfacing the error.</p>
+                <pre><code><span class="c-key">async</span> <span class="c-fn">function</span> withRetry(run) {
+  <span class="c-key">for</span> (<span class="c-key">let</span> i = <span class="c-num">0</span>; i &lt; <span class="c-num">3</span>; i++) {
+    <span class="c-key">try</span> { <span class="c-key">return</span> <span class="c-key">await</span> run(); }
+    <span class="c-key">catch</span> (e) { <span class="c-key">if</span> (e.status !== <span class="c-num">429</span>) <span class="c-key">throw</span> e; }
+    <span class="c-key">await</span> sleep(<span class="c-num">2</span> ** i * <span class="c-num">500</span>);
+  }
+}</code></pre>
+              </div>
+              <div class="composer">How can I help you today?</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Features ─────────────────────────────────────── -->
+      <section id="features" class="band">
+        <div class="container">
+          <p class="eyebrow">Why Relay</p>
+          <h2 class="display-lg">A frontier agent, without the lock-in.</h2>
+          <div class="grid-3">
+            <article class="card">
+              <div class="card-icon">⌘</div>
+              <h3>Bring your own model</h3>
+              <p>
+                Wired to Mastra's model router — every provider, hundreds of models.
+                Pick OpenAI, Anthropic, DeepSeek, OpenRouter, or local. Search and
+                switch in one keystroke.
+              </p>
+            </article>
+            <article class="card">
+              <div class="card-icon">⛬</div>
+              <h3>Your keys, encrypted</h3>
+              <p>
+                API keys are stored with the OS keychain via Electron safeStorage —
+                encrypted on disk, never in a config file, never sent anywhere but
+                the provider you chose.
+              </p>
+            </article>
+            <article class="card">
+              <div class="card-icon">◇</div>
+              <h3>Truly open</h3>
+              <p>
+                MIT-spirited, no telemetry, no account. The whole thing is a few
+                thousand lines of TypeScript you can read in an afternoon and bend
+                to your workflow.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Modes ────────────────────────────────────────── -->
+      <section id="modes" class="band soft">
+        <div class="container">
+          <p class="eyebrow">Two modes, one brain</p>
+          <h2 class="display-lg">Talk it through, or hand it the keyboard.</h2>
+          <div class="grid-2">
+            <article class="card mode">
+              <span class="badge">Chat</span>
+              <h3>Think out loud</h3>
+              <p>
+                A focused, streaming conversation for the moments before you write
+                code — design decisions, gnarly bugs, the &ldquo;why is this slow&rdquo;
+                rabbit holes. Sessions are saved automatically, the instant you send
+                your first message.
+              </p>
+            </article>
+            <article class="card mode">
+              <span class="badge">Code</span>
+              <h3>Ship the change</h3>
+              <p>
+                Point the same agent at your repository and let it read, grep, and
+                edit. The pastel timeline shows every step it takes so nothing
+                happens behind your back.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Models band ──────────────────────────────────── -->
+      <section id="models" class="band">
+        <div class="container center">
+          <p class="eyebrow">Any provider</p>
+          <h2 class="display-lg">One picker. Every model worth running.</h2>
+          <p class="lead">
+            Relay reads the provider registry locally — no network call to list models —
+            so the picker is instant even with hundreds of options.
+          </p>
+          <ul class="logo-row">
+            <li>OpenAI</li>
+            <li>Anthropic</li>
+            <li>Google</li>
+            <li>DeepSeek</li>
+            <li>OpenRouter</li>
+            <li>Groq</li>
+            <li>Mistral</li>
+            <li>xAI</li>
+            <li>Ollama Cloud</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ── Open source CTA ──────────────────────────────── -->
+      <section id="open-source" class="cta-band">
+        <div class="container center">
+          <h2 class="display-lg">Free, forever. Yours to fork.</h2>
+          <p class="lead">
+            Clone it, read it, change it. Relay is built in the open and ships with
+            no strings attached.
+          </p>
+          <div class="hero-actions center" id="download">
+            <a class="btn-primary" href="https://github.com/LeventeNagy/relay-coding-agent">
+              Get Relay on GitHub
+            </a>
+            <a class="link-tertiary arrow" href="#top">Back to top</a>
+          </div>
+          <pre class="install"><code><span class="c-comment"># clone &amp; run</span>
+git clone https://github.com/LeventeNagy/relay-coding-agent
+pnpm install
+pnpm dev</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <!-- ── Footer ───────────────────────────────────────────── -->
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div>
+          <a class="wordmark" href="#top">Relay<span class="dot">.</span></a>
+          <p class="footer-tag">The open-source coding agent.</p>
+        </div>
+        <nav class="footer-cols">
+          <div>
+            <h4>Product</h4>
+            <a href="#features">Features</a>
+            <a href="#modes">Modes</a>
+            <a href="#models">Models</a>
+          </div>
+          <div>
+            <h4>Project</h4>
+            <a href="https://github.com/LeventeNagy/relay-coding-agent">GitHub</a>
+            <a href="https://github.com/LeventeNagy/relay-coding-agent/issues">Issues</a>
+            <a href="https://github.com/LeventeNagy/relay-coding-agent#readme">Docs</a>
+          </div>
+          <div>
+            <h4>Built with</h4>
+            <a href="https://mastra.ai">Mastra</a>
+            <a href="https://electronjs.org">Electron</a>
+            <a href="https://react.dev">React</a>
+          </div>
+        </nav>
+      </div>
+      <div class="container footer-base">
+        <span>© 2026 Relay — open source.</span>
+        <span>No telemetry. No account. No lock-in.</span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -96,6 +96,12 @@ const skillsApi = {
   },
   delete(id: string): Promise<Skill[]> {
     return ipcRenderer.invoke("skills:delete", id);
+  },
+  /** Subscribe to external skill-list changes (e.g. an agent install). */
+  onChanged(listener: () => void): () => void {
+    const handler = (): void => listener();
+    ipcRenderer.on("skills:changed", handler);
+    return () => ipcRenderer.removeListener("skills:changed", handler);
   }
 };
 

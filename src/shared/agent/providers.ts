@@ -122,6 +122,34 @@ export const availableModels = (configuredKeys: string[]): ProviderInfo[] => {
 /** The router slug for a catalog entry (the part before the first "/"). */
 export const providerSlug = (provider: ProviderInfo): string => provider.model.split("/")[0];
 
+/** Reasoning ("deep thinking") capabilities for a model that supports them. */
+export interface ReasoningCaps {
+  /** providerOptions namespace = the model's provider slug. */
+  ns: string;
+  /** Allowed reasoning_effort values; empty = toggle only (no effort selector). */
+  effortValues: string[];
+  defaultEffort?: string;
+}
+
+/**
+ * Returns reasoning controls for a model, or null if it has none. Z.AI / GLM
+ * first; structured so other reasoning providers can be added later.
+ */
+export const reasoningCapsFor = (model: string | null): ReasoningCaps | null => {
+  if (!model) {
+    return null;
+  }
+  const slug = model.split("/")[0];
+  if (slug === "zai" || slug === "zai-coding-plan") {
+    const id = model.split("/").slice(1).join("/");
+    // GLM-5.x exposes reasoning_effort high|max (max is the default); older GLM
+    // models get the on/off toggle only.
+    const effortValues = /glm-5/i.test(id) ? ["high", "max"] : [];
+    return { ns: slug, effortValues, defaultEffort: effortValues.length ? "max" : undefined };
+  }
+  return null;
+};
+
 /** One selectable model in the chat picker. */
 export interface ModelOption {
   /** Full Mastra router id, e.g. "openrouter/deepseek/deepseek-chat-v3.1". */
@@ -156,6 +184,43 @@ export const buildModelOptions = (
     }
   }
   return options;
+};
+
+/** A configured provider plus its expanded model list, for the picker's level 1. */
+export interface ProviderGroup {
+  slug: string;
+  name: string;
+  variable: string;
+  plans: string[];
+  models: ModelOption[];
+}
+
+/**
+ * Groups every configured provider with its full model list (registry, or the
+ * catalog default as a fallback). Powers the two-level model picker: pick a
+ * provider, then search that provider's models — instead of one flat mega-list.
+ */
+export const buildProviderGroups = (
+  configuredKeys: string[],
+  registryModels: ProviderModels
+): ProviderGroup[] => {
+  const groups: ProviderGroup[] = [];
+  for (const provider of availableModels(configuredKeys)) {
+    const slug = providerSlug(provider);
+    const ids = registryModels[slug]?.length ? registryModels[slug] : [provider.model.slice(slug.length + 1)];
+    const seen = new Set<string>();
+    const models: ModelOption[] = [];
+    for (const id of ids) {
+      const model = `${slug}/${id}`;
+      if (seen.has(model)) {
+        continue;
+      }
+      seen.add(model);
+      models.push({ model, label: id, providerName: provider.name, slug });
+    }
+    groups.push({ slug, name: provider.name, variable: provider.variable, plans: provider.plans, models });
+  }
+  return groups;
 };
 
 /**

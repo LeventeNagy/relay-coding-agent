@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentMessage, ChatSession, SessionSummary, WorkspaceMode } from "../../shared/agent/types";
+import type {
+  AgentMessage,
+  ChatSession,
+  SessionSummary,
+  ThinkingOptions,
+  WorkspaceMode
+} from "../../shared/agent/types";
 import type { SkillRef } from "../../shared/skills/types";
 
 const createId = (prefix: string): string =>
@@ -25,7 +31,7 @@ export interface SessionsController {
   activeSessionId: string | null;
   messages: AgentMessage[];
   isStreaming: boolean;
-  send: (text: string, skills?: SkillRef[]) => void;
+  send: (text: string, skills?: SkillRef[], thinking?: ThinkingOptions) => void;
   newSession: () => void;
   openSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -92,6 +98,16 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
         );
         return;
       }
+      if (event.type === "reasoning") {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === event.runId
+              ? { ...message, reasoning: (message.reasoning ?? "") + event.text }
+              : message
+          )
+        );
+        return;
+      }
       if (event.type === "error") {
         setMessages((current) =>
           current.map((message) =>
@@ -136,7 +152,7 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
   }, [mode, newSession]);
 
   const send = useCallback(
-    (text: string, skills?: SkillRef[]) => {
+    (text: string, skills?: SkillRef[], thinking?: ThinkingOptions) => {
       const trimmed = text.trim();
       if (!trimmed || !model || streamingId) {
         return;
@@ -175,7 +191,8 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
         messages: history,
         model,
         activeTab: mode,
-        skills: skills && skills.length > 0 ? skills : undefined
+        skills: skills && skills.length > 0 ? skills : undefined,
+        thinking
       });
     },
     [model, mode, streamingId, persistActive]

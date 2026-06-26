@@ -1,3 +1,5 @@
+import type { WorkspaceMode } from "../agent/types";
+
 /**
  * A Skill is a reusable instruction the agent can apply on demand. Users add
  * them in the Skills tab and reference them in chat with `/<slug>`; the referenced
@@ -11,6 +13,8 @@ export interface Skill {
   description: string;
   /** The instruction body handed to the agent when the skill is applied. */
   instructions: string;
+  /** Workspaces this skill is offered in (autocomplete). Empty data → both. */
+  modes: WorkspaceMode[];
   createdAt: string;
   updatedAt: string;
 }
@@ -21,7 +25,11 @@ export interface SkillInput {
   name: string;
   description: string;
   instructions: string;
+  modes?: WorkspaceMode[];
 }
+
+/** Default modes for a skill that doesn't specify any (offered everywhere). */
+export const allModes = (): WorkspaceMode[] => ["chat", "code"];
 
 /** Compact skill reference passed to the agent for a single run. */
 export interface SkillRef {

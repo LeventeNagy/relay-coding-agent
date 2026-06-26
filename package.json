@@ -15,9 +15,13 @@
     "@mastra/mcp": "^1.12.0",
     "@vitejs/plugin-react": "latest",
     "electron-vite": "latest",
+    "highlight.js": "^11.11.1",
     "lucide-react": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "latest",

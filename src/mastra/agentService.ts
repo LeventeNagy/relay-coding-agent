@@ -8,7 +8,10 @@ const createId = (): string => {
 const instructionsFor = (mode: WorkspaceMode): string => {
   const base =
     "You are Relay, an open-source coding agent. Be concise, technical, and action-oriented. " +
-    "Prefer concrete steps, file paths, and code over prose.";
+    "Prefer concrete steps, file paths, and code over prose. " +
+    "Format every response in GitHub-Flavored Markdown. Put ALL code, files, or terminal output " +
+    "in fenced code blocks with a language tag (```ts, ```html, ```bash, ```markdown); never paste " +
+    "raw HTML or code outside a fenced block. Use headings, bold, and lists to keep answers structured.";
   switch (mode) {
     case "code":
       return `${base} You are in CODE mode: focus on implementation, edits, and verification steps.`;
@@ -34,6 +37,10 @@ export interface StreamArgs {
   messages: AgentMessage[];
   /** Namespaced MCP toolsets to inject for this run (from mcpManager). */
   toolsets?: Record<string, Record<string, unknown>>;
+  /** Relay's own always-on tools (install_skill, fetch_url, …). */
+  tools?: Record<string, unknown>;
+  /** Reasoning controls for capable models (Z.AI / GLM). */
+  thinking?: { enabled: boolean; effort?: string };
   /** Skills referenced this turn; appended to the system instructions. */
   skills?: Array<{ name: string; instructions: string }>;
   onEvent: (event: AgentStreamEvent) => void;
@@ -65,44 +72,158 @@ export const streamMessage = async ({
   activeTab,
   messages,
   toolsets,
+  tools,
+  thinking,
   skills,
   onEvent
 }: StreamArgs): Promise<void> => {
+  const toolNames = tools ? Object.keys(tools) : [];
+
+  // Idle watchdog: reasoning models (e.g. glm-5.2) emit "thinking" tokens before
+  // any text and can take >60s to first text. We read the *full* stream and reset
+  // this timer on EVERY chunk (reasoning, tool-call, text), so it only fires on
+  // genuine silence — never mid-thought — and we don't discard a late answer.
+  const IDLE_MS = 120_000;
+  let settled = false;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const emit = (streamEvent: AgentStreamEvent): void => {
+    if (!settled) {
+      onEvent(streamEvent);
+    }
+  };
+  const fail = (message: string): void => {
+    if (!settled) {
+      settled = true;
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+      }
+      onEvent({ type: "error", runId, message });
+    }
+  };
+  const armIdle = (): void => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(() => {
+      console.error(`[relay] watchdog fired — no stream activity in ${IDLE_MS / 1000}s`);
+      fail(
+        `The model produced no output for ${IDLE_MS / 1000}s and was given up on. ` +
+          "It may be overloaded or unreachable — try again or pick another model."
+      );
+    }, IDLE_MS);
+  };
+
+  type FullChunk = { type: string; payload?: { text?: string; error?: unknown } };
+
   try {
     const agent = new Agent({
       id: "relay",
       name: "relay",
       instructions: composeInstructions(activeTab, skills),
-      model
+      model,
+      ...(tools ? { tools: tools as never } : {})
     });
 
-    const hasTools = toolsets && Object.keys(toolsets).length > 0;
+    const hasToolsets = Boolean(toolsets && Object.keys(toolsets).length > 0);
     const modelMessages = toModelMessages(messages);
-    const result = hasTools
-      ? await agent.stream(modelMessages, { toolsets: toolsets as never })
-      : await agent.stream(modelMessages);
+
+    // Bound the agentic loop so a misbehaving model can't spin tool calls forever.
+    const streamOptions: Record<string, unknown> = { maxSteps: 8 };
+    if (hasToolsets) {
+      streamOptions.toolsets = toolsets;
+    }
+
+    // Pass reasoning controls as provider options, namespaced by the model's
+    // provider slug. Mastra's OpenAI-compatible model maps `reasoningEffort` to
+    // `reasoning_effort` and spreads `thinking` verbatim into the request body.
+    if (thinking) {
+      const slug = model.split("/")[0];
+      streamOptions.providerOptions = {
+        [slug]: {
+          thinking: { type: thinking.enabled ? "enabled" : "disabled" },
+          ...(thinking.enabled && thinking.effort ? { reasoningEffort: thinking.effort } : {})
+        }
+      };
+    }
+
+    console.log(
+      `[relay] stream start model=${model} nativeTools=[${toolNames.join(",")}] toolsets=${hasToolsets}`
+    );
+    const result = await agent.stream(modelMessages, streamOptions as never);
+    armIdle();
 
     let full = "";
-    for await (const delta of result.textStream) {
-      if (!delta) {
-        continue;
+    let firstText = true;
+    let reasoningChars = 0;
+    const fullStream = (result as { fullStream: AsyncIterable<FullChunk> }).fullStream;
+    for await (const chunk of fullStream) {
+      armIdle(); // any activity (incl. reasoning) keeps the run alive
+      if (settled) {
+        break;
       }
-      full += delta;
-      onEvent({ type: "delta", runId, text: delta });
+      switch (chunk.type) {
+        case "text-delta": {
+          const text = chunk.payload?.text ?? "";
+          if (text) {
+            if (firstText) {
+              console.log(`[relay] first text delta (after ${reasoningChars} reasoning chars)`);
+              firstText = false;
+            }
+            full += text;
+            emit({ type: "delta", runId, text });
+          }
+          break;
+        }
+        case "reasoning-delta": {
+          // Stream reasoning to the UI's Thinking panel (also keeps the run alive).
+          const text = chunk.payload?.text ?? "";
+          if (text) {
+            reasoningChars += text.length;
+            emit({ type: "reasoning", runId, text });
+          }
+          break;
+        }
+        case "tool-call":
+          console.log("[relay] tool-call chunk");
+          break;
+        case "error": {
+          const errText =
+            chunk.payload?.error instanceof Error
+              ? chunk.payload.error.message
+              : String(chunk.payload?.error ?? "stream error");
+          fail(errText);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+
+    if (settled) {
+      return;
     }
 
     if (!full) {
-      // No text streamed (e.g. model returned only tool calls); fall back to the
-      // resolved final text so the UI still receives content.
+      // No text streamed (e.g. tool-only turn); fall back to the resolved text.
+      console.log("[relay] no text streamed; awaiting result.text");
       full = await result.text;
       if (full) {
-        onEvent({ type: "delta", runId, text: full });
+        emit({ type: "delta", runId, text: full });
       }
     }
 
-    onEvent({ type: "done", runId, text: full });
+    console.log(`[relay] stream done chars=${full.length} reasoning=${reasoningChars}`);
+    emit({ type: "done", runId, text: full });
+    settled = true;
   } catch (error) {
-    onEvent({ type: "error", runId, message: describeAgentError(error) });
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+    console.error("[relay] stream error:", error);
+    fail(describeAgentError(error));
   }
 };
 

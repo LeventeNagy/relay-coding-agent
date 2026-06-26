@@ -1,7 +1,7 @@
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { slugify, type Skill, type SkillInput } from "../shared/skills/types";
+import { allModes, slugify, type Skill, type SkillInput } from "../shared/skills/types";
 
 /**
  * Persists user-defined skills as plain JSON (`relay-skills.json` in userData).
@@ -20,11 +20,26 @@ const load = (): Skill[] => {
   try {
     const raw = readFileSync(filePath(), "utf8");
     const parsed = JSON.parse(raw) as Skill[];
-    cache = Array.isArray(parsed) ? parsed : [];
+    // Normalize older records that predate mode scoping → offered in both modes.
+    cache = Array.isArray(parsed)
+      ? parsed.map((skill) => ({
+          ...skill,
+          modes: Array.isArray(skill.modes) && skill.modes.length > 0 ? skill.modes : allModes()
+        }))
+      : [];
   } catch {
     cache = [];
   }
   return cache;
+};
+
+/** Tell any open window the skill list changed (e.g. after an agent install). */
+const broadcastChanged = (): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send("skills:changed");
+    }
+  }
 };
 
 const persist = (skills: Skill[]): void => {
@@ -65,12 +80,14 @@ export const saveSkill = (input: SkillInput): Skill[] => {
             name: input.name,
             description: input.description,
             instructions: input.instructions,
+            modes: input.modes?.length ? input.modes : skill.modes,
             slug: uniqueSlug(base, skills, skill.id),
             updatedAt: now
           }
         : skill
     );
     persist(next);
+    broadcastChanged();
     return [...next];
   }
 
@@ -80,16 +97,19 @@ export const saveSkill = (input: SkillInput): Skill[] => {
     name: input.name,
     description: input.description,
     instructions: input.instructions,
+    modes: input.modes?.length ? input.modes : allModes(),
     createdAt: now,
     updatedAt: now
   };
   const next = [...skills, skill];
   persist(next);
+  broadcastChanged();
   return next;
 };
 
 export const deleteSkill = (id: string): Skill[] => {
   const next = load().filter((s) => s.id !== id);
   persist(next);
+  broadcastChanged();
   return next;
 };

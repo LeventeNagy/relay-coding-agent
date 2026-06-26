@@ -190,7 +190,13 @@ export const App = (): ReactElement => {
 
         <main className="preview-canvas" aria-label="Workspace canvas">
           {showChat && (
-            <ChatView chat={chat} settings={settings} skills={skills} modeLabel={activeWorkspaceLabel} />
+            <ChatView
+              chat={chat}
+              settings={settings}
+              skills={skills}
+              mode={activeWorkspace}
+              modeLabel={activeWorkspaceLabel}
+            />
           )}
           {activeView === "settings" && <SettingsView settings={settings} />}
           {activeView === "plugins" && <PluginsView plugins={plugins} skills={skills} />}

@@ -1,7 +1,8 @@
 import { ReactElement, useState } from "react";
-import { Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
-import { slugify } from "../../shared/skills/types";
+import { Code2, Loader2, MessageCircle, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { allModes, slugify } from "../../shared/skills/types";
 import type { Skill } from "../../shared/skills/types";
+import type { WorkspaceMode } from "../../shared/agent/types";
 import type { SkillsController } from "../hooks/useSkills";
 
 interface SkillsPanelProps {
@@ -13,15 +14,22 @@ interface Draft {
   name: string;
   description: string;
   instructions: string;
+  modes: WorkspaceMode[];
 }
 
-const blankDraft = (): Draft => ({ name: "", description: "", instructions: "" });
+const MODE_OPTIONS: Array<{ id: WorkspaceMode; label: string; icon: typeof MessageCircle }> = [
+  { id: "chat", label: "Chat", icon: MessageCircle },
+  { id: "code", label: "Code", icon: Code2 }
+];
+
+const blankDraft = (): Draft => ({ name: "", description: "", instructions: "", modes: allModes() });
 
 const draftFromSkill = (skill: Skill): Draft => ({
   id: skill.id,
   name: skill.name,
   description: skill.description,
-  instructions: skill.instructions
+  instructions: skill.instructions,
+  modes: skill.modes.length ? skill.modes : allModes()
 });
 
 export const SkillsPanel = ({ skills }: SkillsPanelProps): ReactElement => {
@@ -30,6 +38,18 @@ export const SkillsPanel = ({ skills }: SkillsPanelProps): ReactElement => {
   const [busy, setBusy] = useState(false);
 
   const previewSlug = draft ? slugify(draft.name || "skill") : "";
+
+  /** Toggle a mode in the draft, keeping at least one selected. */
+  const toggleMode = (mode: WorkspaceMode): void => {
+    setDraft((d) => {
+      if (!d) {
+        return d;
+      }
+      const has = d.modes.includes(mode);
+      const next = has ? d.modes.filter((m) => m !== mode) : [...d.modes, mode];
+      return { ...d, modes: next.length ? next : d.modes };
+    });
+  };
 
   const saveDraft = async (): Promise<void> => {
     if (!draft || !draft.name.trim() || !draft.instructions.trim()) {
@@ -40,7 +60,8 @@ export const SkillsPanel = ({ skills }: SkillsPanelProps): ReactElement => {
       id: draft.id,
       name: draft.name.trim(),
       description: draft.description.trim(),
-      instructions: draft.instructions.trim()
+      instructions: draft.instructions.trim(),
+      modes: draft.modes.length ? draft.modes : allModes()
     });
     setBusy(false);
     setDraft(null);
@@ -74,6 +95,17 @@ export const SkillsPanel = ({ skills }: SkillsPanelProps): ReactElement => {
                 {skill.name} <span className="skill-slug">/{skill.slug}</span>
               </strong>
               <p>{skill.description || "No description"}</p>
+              <div className="skill-mode-badges">
+                {MODE_OPTIONS.filter((option) => skill.modes.includes(option.id)).map((option) => {
+                  const Icon = option.icon;
+                  return (
+                    <span className="skill-mode-badge" key={option.id}>
+                      <Icon size={11} />
+                      {option.label}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
             <div className="plugin-actions">
               <button
@@ -135,6 +167,28 @@ export const SkillsPanel = ({ skills }: SkillsPanelProps): ReactElement => {
                   }}
                 />
               </label>
+
+              <div className="plugin-field">
+                <span>Available in</span>
+                <div className="skill-mode-toggle" role="group" aria-label="Workspaces">
+                  {MODE_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+                    const active = draft.modes.includes(option.id);
+                    return (
+                      <button
+                        className={active ? "skill-mode-pill active" : "skill-mode-pill"}
+                        key={option.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleMode(option.id)}
+                      >
+                        <Icon size={14} />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <label className="plugin-field">
                 <span>Instructions</span>

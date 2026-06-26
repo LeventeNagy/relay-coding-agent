@@ -15,23 +15,29 @@ export const useSkills = (): SkillsController => {
 
   useEffect(() => {
     let active = true;
-    window.skills
-      .list()
-      .then((list) => {
-        if (active) {
-          setSkills(list);
-          setReady(true);
-        }
-      })
-      .catch((error) => {
-        // eslint-disable-next-line no-console
-        console.error("skills.list failed:", error);
-        if (active) {
-          setReady(true);
-        }
-      });
+    const load = (): void => {
+      window.skills
+        .list()
+        .then((list) => {
+          if (active) {
+            setSkills(list);
+            setReady(true);
+          }
+        })
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error("skills.list failed:", error);
+          if (active) {
+            setReady(true);
+          }
+        });
+    };
+    load();
+    // Refetch when the list changes outside the UI (e.g. an agent install_skill).
+    const unsubscribe = window.skills.onChanged(load);
     return () => {
       active = false;
+      unsubscribe();
     };
   }, []);
 

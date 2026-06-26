@@ -6,7 +6,16 @@ export interface AgentMessage {
   id: string;
   role: AgentRole;
   content: string;
+  /** Streamed reasoning ("thinking") text, when the model emits it. */
+  reasoning?: string;
   createdAt: string;
+}
+
+/** Per-request reasoning controls (currently Z.AI / GLM). */
+export interface ThinkingOptions {
+  enabled: boolean;
+  /** reasoning_effort value, e.g. "high" | "max" (GLM-5.x). */
+  effort?: string;
 }
 
 export interface AgentRequest {
@@ -19,11 +28,14 @@ export interface AgentRequest {
   activeTab: WorkspaceMode;
   /** Skills referenced (via /<slug>) in this turn; their instructions are applied. */
   skills?: Array<{ name: string; instructions: string }>;
+  /** Reasoning controls for capable models (Z.AI / GLM). */
+  thinking?: ThinkingOptions;
 }
 
 /** Streaming events pushed from main -> renderer for a single run. */
 export type AgentStreamEvent =
   | { type: "delta"; runId: string; text: string }
+  | { type: "reasoning"; runId: string; text: string }
   | { type: "done"; runId: string; text: string }
   | { type: "error"; runId: string; message: string };
 

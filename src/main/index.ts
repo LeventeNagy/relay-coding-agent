@@ -20,6 +20,7 @@ import {
 } from "./mcpManager";
 import { pluginCatalog } from "../shared/plugins/catalog";
 import { deleteSkill, listSkills, saveSkill } from "./skillStore";
+import { nativeTools } from "./nativeTools";
 import type { AgentRequest, AgentRunHandle, ChatSession, WorkspaceMode } from "../shared/agent/types";
 import type { PluginInput, PluginServerConfig } from "../shared/plugins/types";
 import type { SkillInput } from "../shared/skills/types";
@@ -118,6 +119,10 @@ const registerIpc = (): void => {
     const runId = request.runId;
     const sender = event.sender;
 
+    // Relay's native tools are on by default; set RELAY_NATIVE_TOOLS=0 to disable
+    // them (escape hatch if a specific model misbehaves with tools attached).
+    const toolsEnabled = process.env.RELAY_NATIVE_TOOLS !== "0";
+
     void (async () => {
       // Fetch live MCP toolsets for enabled plugins; failures shouldn't block chat.
       const toolsets = await getActiveToolsets().catch(() => undefined);
@@ -127,6 +132,8 @@ const registerIpc = (): void => {
         activeTab: request.activeTab,
         messages: request.messages,
         toolsets,
+        tools: toolsEnabled ? nativeTools : undefined,
+        thinking: request.thinking,
         skills: request.skills,
         onEvent: (streamEvent) => {
           if (!sender.isDestroyed()) {

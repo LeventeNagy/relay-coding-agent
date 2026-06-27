@@ -1,19 +1,26 @@
 import { ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Blocks,
   Brain,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FileText,
+  FolderPlus,
+  Globe,
   Mic,
+  Paperclip,
   Plus,
+  ScanSearch,
   Search,
   SendHorizontal,
   SlidersHorizontal,
-  Sparkles
+  Sparkles,
+  X
 } from "lucide-react";
-import { buildProviderGroups, reasoningCapsFor } from "../../shared/agent/providers";
-import type { ThinkingOptions } from "../../shared/agent/types";
+import { buildProviderGroups, reasoningCapsFor, supportsVision } from "../../shared/agent/providers";
+import type { Attachment, ThinkingOptions } from "../../shared/agent/types";
 import { Conversation, ConversationContent } from "../components/ai-elements/conversation";
 import { Message, MessageContent } from "../components/ai-elements/message";
 import { Response } from "../components/ai-elements/response";
@@ -30,6 +37,12 @@ interface ChatViewProps {
   skills: SkillsController;
   mode: WorkspaceMode;
   modeLabel: string;
+  /** "+" menu → Skills → Add skill (opens the new-skill form). */
+  onAddSkill: () => void;
+  /** "+" menu → Skills → Manage skills (opens the skills panel). */
+  onManageSkills: () => void;
+  /** "+" menu → Add plugins (opens the plugins panel). */
+  onOpenPlugins: () => void;
 }
 
 const MODEL_RESULT_LIMIT = 60;
@@ -113,13 +126,122 @@ const ThinkingIndicator = (): ReactElement => {
   );
 };
 
-export const ChatView = ({ chat, settings, skills, mode, modeLabel }: ChatViewProps): ReactElement => {
+/** A file staged in the composer before the message is sent. */
+interface PendingAttachment {
+  localId: string;
+  name: string;
+  mimeType: string;
+  kind: "image" | "document";
+  /** Base64 of the raw bytes (no data-URL prefix) — sent to attachments:ingest. */
+  data: string;
+  /** Object/data URL for an instant image preview. */
+  previewUrl?: string;
+}
+
+const ACCEPT_ATTACHMENTS = "image/*,.pdf,.docx,.txt,.md,.markdown,.csv,.json,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.rb,.php,.c,.cpp,.h,.css,.html,.yml,.yaml,.toml,.sh";
+
+/** Read a File into a pending attachment (base64 payload + preview for images). */
+const readFile = (file: File): Promise<PendingAttachment> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const result = String(reader.result);
+      const comma = result.indexOf(",");
+      const data = comma >= 0 ? result.slice(comma + 1) : result;
+      const kind = file.type.startsWith("image/") ? "image" : "document";
+      resolve({
+        localId: `pa_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name,
+        mimeType: file.type,
+        kind,
+        data,
+        previewUrl: kind === "image" ? result : undefined
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+
+/** Image thumbnail that lazily loads its data URL from the store by id. */
+const AttachmentImage = ({ id, name }: { id: string; name: string }): ReactElement => {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void window.attachments.read(id).then((url) => {
+      if (active) {
+        setSrc(url);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+  if (!src) {
+    return <span className="attachment-image attachment-image-loading" aria-label={name} />;
+  }
+  return <img className="attachment-image" src={src} alt={name} />;
+};
+
+/** Attachments rendered inside a sent message bubble. */
+const MessageAttachments = ({ attachments }: { attachments: Attachment[] }): ReactElement => (
+  <div className="message-attachments">
+    {attachments.map((att) =>
+      att.kind === "image" ? (
+        <AttachmentImage key={att.id} id={att.id} name={att.name} />
+      ) : (
+        <span key={att.id} className="attachment-chip" title={att.name}>
+          <FileText size={13} />
+          {att.name}
+        </span>
+      )
+    )}
+  </div>
+);
+
+export const ChatView = ({
+  chat,
+  settings,
+  skills,
+  mode,
+  modeLabel,
+  onAddSkill,
+  onManageSkills,
+  onOpenPlugins
+}: ChatViewProps): ReactElement => {
   const { state, setModel } = settings;
   const skillList = skills.skills;
   const registryModels = useProviderModels();
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const plusMenuRef = useRef<HTMLDivElement | null>(null);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+
+  // Close the "+" menu on outside click or Escape.
+  useEffect(() => {
+    if (!plusOpen) {
+      return;
+    }
+    const onDown = (event: globalThis.MouseEvent): void => {
+      if (plusMenuRef.current && !plusMenuRef.current.contains(event.target as Node)) {
+        setPlusOpen(false);
+      }
+    };
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setPlusOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [plusOpen]);
   const skillSlugs = useMemo(() => new Set(skillList.map((skill) => skill.slug)), [skillList]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
@@ -266,31 +388,145 @@ export const ChatView = ({ chat, settings, skills, mode, modeLabel }: ChatViewPr
     renderHighlight();
   };
 
-  const submit = (): void => {
-    const composer = composerRef.current;
-    if (!composer) {
+  const addFiles = (files: FileList | File[]): void => {
+    const list = Array.from(files);
+    if (list.length === 0) {
       return;
     }
-    const refs = resolveSkillRefs(composer.value, skillList);
-    chat.send(composer.value, refs, thinkingPayload);
+    void Promise.all(list.map(readFile))
+      .then((read) => setPending((current) => [...current, ...read]))
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error("attachment read failed:", error);
+      });
+  };
+
+  const removePending = (localId: string): void => {
+    setPending((current) => current.filter((item) => item.localId !== localId));
+  };
+
+  const openFilePicker = (): void => {
+    fileInputRef.current?.click();
+  };
+
+  /** Run a "+" menu action and close the menu. */
+  const runPlusAction = (action: () => void): void => {
+    setPlusOpen(false);
+    action();
+  };
+
+  const submit = (): void => {
+    const composer = composerRef.current;
+    if (!composer || chat.isStreaming) {
+      return;
+    }
+    const text = composer.value;
+    const staged = pending;
+    if (!text.trim() && staged.length === 0) {
+      return;
+    }
+    const refs = resolveSkillRefs(text, skillList);
+
+    const dispatch = (attachments?: Attachment[]): void => {
+      chat.send(text, refs, thinkingPayload, attachments);
+    };
+
+    if (staged.length > 0) {
+      void window.attachments
+        .ingest(staged.map(({ name, mimeType, data }) => ({ name, mimeType, data })))
+        .then((attachments) => dispatch(attachments))
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error("attachments.ingest failed:", error);
+          dispatch();
+        });
+    } else {
+      dispatch();
+    }
+
     composer.value = "";
+    setPending([]);
     setSlashOpen(false);
     growComposer();
     renderHighlight();
   };
 
+  const visionWarning =
+    pending.some((item) => item.kind === "image") && !supportsVision(state.activeModel);
+
   const composer = (
     <form
-      className="chat-composer"
+      className={dragOver ? "chat-composer drag-over" : "chat-composer"}
       aria-label="Chat composer"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) {
+          event.preventDefault();
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) {
+          setDragOver(false);
+        }
+      }}
+      onDrop={(event) => {
+        if (event.dataTransfer.files.length > 0) {
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        }
+        setDragOver(false);
+      }}
     >
       <label className="sr-only" htmlFor="relay-chat-input">
         Message Relay
       </label>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPT_ATTACHMENTS}
+        className="sr-only"
+        onChange={(event) => {
+          if (event.currentTarget.files) {
+            addFiles(event.currentTarget.files);
+          }
+          event.currentTarget.value = "";
+        }}
+      />
+      {pending.length > 0 && (
+        <div className="composer-attachments">
+          {pending.map((item) => (
+            <div
+              key={item.localId}
+              className={item.kind === "image" ? "pending-attachment pending-image" : "pending-attachment"}
+            >
+              {item.kind === "image" && item.previewUrl ? (
+                <img src={item.previewUrl} alt={item.name} />
+              ) : (
+                <span className="pending-doc">
+                  <FileText size={14} />
+                  <span className="pending-name">{item.name}</span>
+                </span>
+              )}
+              <button
+                type="button"
+                className="pending-remove"
+                aria-label={`Remove ${item.name}`}
+                onClick={() => removePending(item.localId)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {visionWarning && (
+        <p className="composer-hint">This model may not be able to read images. Pick a vision model for image questions.</p>
+      )}
       {slashOpen && slashMatches.length > 0 && (
         <ul className="slash-menu" role="listbox" aria-label="Skills">
           {slashMatches.map((skill, index) => (
@@ -337,6 +573,11 @@ export const ChatView = ({ chat, settings, skills, mode, modeLabel }: ChatViewPr
         }}
         onClick={refreshSlash}
         onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "u") {
+            event.preventDefault();
+            openFilePicker();
+            return;
+          }
           if (slashOpen && slashMatches.length > 0) {
             if (event.key === "ArrowDown") {
               event.preventDefault();
@@ -367,9 +608,96 @@ export const ChatView = ({ chat, settings, skills, mode, modeLabel }: ChatViewPr
         />
       </div>
       <div className="composer-footer">
-        <button className="composer-icon-button" type="button" aria-label="Add attachment or context">
-          <Plus size={18} />
-        </button>
+        <div className="plus-menu-wrap" ref={plusMenuRef}>
+          <button
+            className="composer-icon-button"
+            type="button"
+            aria-label="Add attachment or context"
+            aria-haspopup="menu"
+            aria-expanded={plusOpen}
+            onClick={() => setPlusOpen((open) => !open)}
+          >
+            <Plus size={18} />
+          </button>
+          {plusOpen && (
+            <ul className="plus-menu" role="menu" aria-label="Add to chat">
+              <li role="none">
+                <button role="menuitem" type="button" onClick={() => runPlusAction(openFilePicker)}>
+                  <Paperclip size={15} />
+                  <span className="plus-label">Add files or photos</span>
+                  <kbd className="plus-shortcut">Ctrl+U</kbd>
+                </button>
+              </li>
+
+              <li className="plus-sub" role="none">
+                <button role="menuitem" type="button" aria-haspopup="menu" disabled>
+                  <FolderPlus size={15} />
+                  <span className="plus-label">Add to project</span>
+                  <span className="plus-soon">Soon</span>
+                  <ChevronRight size={14} className="plus-caret" />
+                </button>
+                <ul className="plus-submenu" role="menu" aria-label="Add to project">
+                  <li role="none">
+                    <button role="menuitem" type="button" disabled>
+                      Create project
+                    </button>
+                  </li>
+                  <li role="none">
+                    <button role="menuitem" type="button" disabled>
+                      Add to existing project
+                    </button>
+                  </li>
+                </ul>
+              </li>
+
+              <li className="plus-divider" role="separator" />
+
+              <li className="plus-sub" role="none">
+                <button role="menuitem" type="button" aria-haspopup="menu">
+                  <Sparkles size={15} />
+                  <span className="plus-label">Skills</span>
+                  <ChevronRight size={14} className="plus-caret" />
+                </button>
+                <ul className="plus-submenu" role="menu" aria-label="Skills">
+                  <li role="none">
+                    <button role="menuitem" type="button" onClick={() => runPlusAction(onAddSkill)}>
+                      Add skill
+                    </button>
+                  </li>
+                  <li role="none">
+                    <button role="menuitem" type="button" onClick={() => runPlusAction(onManageSkills)}>
+                      Manage skills
+                    </button>
+                  </li>
+                </ul>
+              </li>
+
+              <li role="none">
+                <button role="menuitem" type="button" onClick={() => runPlusAction(onOpenPlugins)}>
+                  <Blocks size={15} />
+                  <span className="plus-label">Add plugins…</span>
+                </button>
+              </li>
+
+              <li className="plus-divider" role="separator" />
+
+              <li role="none">
+                <button role="menuitem" type="button" disabled>
+                  <ScanSearch size={15} />
+                  <span className="plus-label">Research</span>
+                  <span className="plus-soon">Soon</span>
+                </button>
+              </li>
+              <li role="none">
+                <button role="menuitem" type="button" disabled>
+                  <Globe size={15} />
+                  <span className="plus-label">Web search</span>
+                  <span className="plus-soon">Soon</span>
+                </button>
+              </li>
+            </ul>
+          )}
+        </div>
         <div className="composer-actions">
           {caps && (
             <div className="thinking-control">
@@ -537,6 +865,9 @@ export const ChatView = ({ chat, settings, skills, mode, modeLabel }: ChatViewPr
           {chat.messages.map((message) => (
             <Message key={message.id} from={message.role}>
               <MessageContent>
+                {message.attachments && message.attachments.length > 0 && (
+                  <MessageAttachments attachments={message.attachments} />
+                )}
                 {message.reasoning && (
                   <details className="reasoning-panel" open={!message.content}>
                     <summary>

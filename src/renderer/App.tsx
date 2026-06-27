@@ -40,6 +40,21 @@ export const App = (): ReactElement => {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>("chat");
   const [activeView, setActiveView] = useState<AppView>("chat");
   const [sidebarWidth, setSidebarWidth] = useState(320);
+  // Which tab the Plugins view opens on, and whether to pop the new-skill form,
+  // when navigated to from the composer "+" menu.
+  const [pluginsTab, setPluginsTab] = useState<"plugins" | "skills">("plugins");
+  const [skillsAutoNew, setSkillsAutoNew] = useState(false);
+
+  const openPlugins = (): void => {
+    setPluginsTab("plugins");
+    setSkillsAutoNew(false);
+    setActiveView("plugins");
+  };
+  const openSkills = (autoNew: boolean): void => {
+    setPluginsTab("skills");
+    setSkillsAutoNew(autoNew);
+    setActiveView("plugins");
+  };
 
   const chat = useSessions(activeWorkspace, settings.state.activeModel);
   const activeWorkspaceLabel = workspaceTabs.find((tab) => tab.id === activeWorkspace)?.label ?? "Chat";
@@ -196,10 +211,20 @@ export const App = (): ReactElement => {
               skills={skills}
               mode={activeWorkspace}
               modeLabel={activeWorkspaceLabel}
+              onAddSkill={() => openSkills(true)}
+              onManageSkills={() => openSkills(false)}
+              onOpenPlugins={openPlugins}
             />
           )}
           {activeView === "settings" && <SettingsView settings={settings} />}
-          {activeView === "plugins" && <PluginsView plugins={plugins} skills={skills} />}
+          {activeView === "plugins" && (
+            <PluginsView
+              plugins={plugins}
+              skills={skills}
+              initialTab={pluginsTab}
+              skillsAutoNew={skillsAutoNew}
+            />
+          )}
         </main>
       </div>
     </div>

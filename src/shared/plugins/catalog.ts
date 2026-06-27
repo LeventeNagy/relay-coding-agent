@@ -35,8 +35,12 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     description: "Search repos, read issues and PRs, and manage GitHub from chat.",
     category: "Developer Tools",
     featured: true,
+    // GitHub's MCP server doesn't support OAuth dynamic client registration, so
+    // it uses a personal access token (one paste, with a deep-link to create it).
+    auth: "key",
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-github"],
+    keyUrl: "https://github.com/settings/tokens",
     envHints: [
       {
         key: "GITHUB_PERSONAL_ACCESS_TOKEN",
@@ -45,6 +49,26 @@ export const pluginCatalog: PluginCatalogEntry[] = [
         placeholder: "ghp_…"
       }
     ]
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    description: "Search, read, and edit your Notion pages and databases.",
+    category: "Productivity",
+    featured: true,
+    transport: "http",
+    auth: "oauth",
+    url: "https://mcp.notion.com/mcp"
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    description: "Create and update Linear issues, projects, and cycles from chat.",
+    category: "Productivity",
+    featured: true,
+    transport: "http",
+    auth: "oauth",
+    url: "https://mcp.linear.app/mcp"
   },
   {
     id: "fetch",
@@ -87,6 +111,7 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     category: "Data & Research",
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-brave-search"],
+    keyUrl: "https://api-dashboard.search.brave.com/app/keys",
     envHints: [
       { key: "BRAVE_API_KEY", label: "Brave Search API key", required: true, placeholder: "BSA…" }
     ]
@@ -98,6 +123,7 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     category: "Communication",
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-slack"],
+    keyUrl: "https://api.slack.com/apps",
     envHints: [
       { key: "SLACK_BOT_TOKEN", label: "Slack bot token", required: true, placeholder: "xoxb-…" },
       { key: "SLACK_TEAM_ID", label: "Slack team ID", required: true, placeholder: "T…" }

@@ -1,9 +1,13 @@
 /**
  * Plugin = an MCP server Relay connects to. Its tools are injected into the
- * agent at run time (see mcpManager.getActiveToolsets). For now only local
- * `stdio` servers are supported; the union leaves room for `http` later.
+ * agent at run time (see mcpManager.getActiveToolsets). `stdio` servers are
+ * local subprocesses; `http` servers are remote endpoints (with OAuth or a
+ * bearer token).
  */
-export type PluginTransport = "stdio";
+export type PluginTransport = "stdio" | "http";
+
+/** How a server authenticates: OAuth browser flow, an API key, or nothing. */
+export type PluginAuth = "oauth" | "key" | "none";
 
 /** Connection status, derived from the last connect/probe attempt. */
 export type PluginStatus = "idle" | "connected" | "error";
@@ -15,6 +19,11 @@ export interface PluginServerConfig {
   catalogId?: string;
   name: string;
   transport: PluginTransport;
+  /** How this server authenticates (drives the connect UX). */
+  auth?: PluginAuth;
+  /** Remote endpoint for `http` transport. */
+  url?: string;
+  /** Command/args for `stdio` transport (empty for `http`). */
   command: string;
   args: string[];
   /** Environment variables for the subprocess (tokens etc.). Encrypted at rest. */
@@ -31,10 +40,13 @@ export interface PluginSummary {
   catalogId?: string;
   name: string;
   transport: PluginTransport;
+  auth?: PluginAuth;
   command: string;
   args: string[];
   /** Names of configured env vars (values withheld from the renderer). */
   envKeys: string[];
+  /** For OAuth servers: whether valid tokens are stored (Connected vs Connect). */
+  authed?: boolean;
   enabled: boolean;
   status: PluginStatus;
   toolCount: number;
@@ -58,8 +70,17 @@ export interface PluginCatalogEntry {
   category: string;
   /** True for the small "Featured" rail at the top of the marketplace. */
   featured?: boolean;
-  command: string;
-  args: string[];
+  /** Defaults to "stdio" when omitted. */
+  transport?: PluginTransport;
+  /** How to authenticate; defaults to "key" if envHints present, else "none". */
+  auth?: PluginAuth;
+  /** Remote endpoint for `http`/OAuth servers. */
+  url?: string;
+  /** Deep-link to where the user creates an API key (for `key` servers). */
+  keyUrl?: string;
+  /** Command for `stdio` servers (optional for `http`). */
+  command?: string;
+  args?: string[];
   envHints?: PluginEnvHint[];
   /**
    * Args the user must fill before the server is usable (e.g. a directory path
@@ -75,11 +96,20 @@ export interface PluginProbeResult {
   error?: string;
 }
 
+/** Returned by `plugins:connect`: the attempt result plus refreshed summaries. */
+export interface PluginConnectResult {
+  result: PluginProbeResult;
+  plugins: PluginSummary[];
+}
+
 /** Payload the renderer sends to add/update a server (env values included). */
 export interface PluginInput {
   id?: string;
   catalogId?: string;
   name: string;
+  transport?: PluginTransport;
+  auth?: PluginAuth;
+  url?: string;
   command: string;
   args: string[];
   env: Record<string, string>;

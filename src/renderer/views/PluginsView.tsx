@@ -1,5 +1,16 @@
 import { ReactElement, useMemo, useState } from "react";
-import { Blocks, Check, ChevronDown, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  Blocks,
+  Check,
+  ChevronDown,
+  ExternalLink,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X
+} from "lucide-react";
 import type { PluginsController } from "../hooks/usePlugins";
 import type { SkillsController } from "../hooks/useSkills";
 import { SkillsPanel } from "./SkillsPanel";
@@ -10,6 +21,10 @@ type PluginsTab = "plugins" | "skills";
 interface PluginsViewProps {
   plugins: PluginsController;
   skills: SkillsController;
+  /** Tab to open on (when navigated to from the composer "+" menu). */
+  initialTab?: PluginsTab;
+  /** Pop the new-skill form on open (from "+" → Skills → Add skill). */
+  skillsAutoNew?: boolean;
 }
 
 /** A draft being configured in the Add panel (from a catalog entry or custom). */
@@ -27,6 +42,8 @@ interface Draft {
   argValues: string[];
   envFields: Array<{ key: string; label: string; required: boolean; placeholder?: string }>;
   envValues: Record<string, string>;
+  /** Deep-link to the provider's "create API key" page, if any. */
+  keyUrl?: string;
 }
 
 const ALL = "All";
@@ -35,13 +52,26 @@ const draftFromCatalog = (entry: PluginCatalogEntry): Draft => ({
   catalogId: entry.id,
   custom: false,
   name: entry.name,
-  command: entry.command,
-  baseArgs: entry.args,
+  command: entry.command ?? "npx",
+  baseArgs: entry.args ?? [],
   argsText: "",
   argHints: entry.argHints ?? [],
   argValues: (entry.argHints ?? []).map(() => ""),
   envFields: (entry.envHints ?? []).map((h) => ({ ...h })),
-  envValues: {}
+  envValues: {},
+  keyUrl: entry.keyUrl
+});
+
+/** Build the add payload for a one-click OAuth catalog entry (no modal). */
+const oauthInput = (entry: PluginCatalogEntry): PluginInput => ({
+  catalogId: entry.id,
+  name: entry.name,
+  transport: "http",
+  auth: "oauth",
+  url: entry.url,
+  command: "",
+  args: [],
+  env: {}
 });
 
 const blankCustomDraft = (): Draft => ({
@@ -72,7 +102,9 @@ const draftToInput = (draft: Draft): PluginInput => {
 const StatusDot = ({ plugin }: { plugin: PluginSummary }): ReactElement => {
   const label =
     plugin.status === "connected"
-      ? `${plugin.toolCount} tool${plugin.toolCount === 1 ? "" : "s"}`
+      ? plugin.toolCount > 0
+        ? `${plugin.toolCount} tool${plugin.toolCount === 1 ? "" : "s"}`
+        : "Connected"
       : plugin.status === "error"
         ? "Error"
         : "Not connected";
@@ -84,15 +116,23 @@ const StatusDot = ({ plugin }: { plugin: PluginSummary }): ReactElement => {
   );
 };
 
-export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement => {
-  const { catalog, installed, add, probe, toggle, remove } = plugins;
-  const [tab, setTab] = useState<PluginsTab>("plugins");
+export const PluginsView = ({
+  plugins,
+  skills,
+  initialTab = "plugins",
+  skillsAutoNew = false
+}: PluginsViewProps): ReactElement => {
+  const { catalog, installed, add, probe, connect, openExternal, toggle, remove } = plugins;
+  const [tab, setTab] = useState<PluginsTab>(initialTab);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(ALL);
   const [filterOpen, setFilterOpen] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [probeMsg, setProbeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Id of the catalog entry / server currently running its OAuth browser flow.
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<{ id: string; text: string } | null>(null);
 
   const categories = useMemo(() => {
     const seen: string[] = [];
@@ -140,6 +180,29 @@ export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement
     setDraft(draftFromCatalog(entry));
   };
 
+  /** One-click OAuth: add the server and run the browser flow (catalog → installed). */
+  const connectCatalog = async (entry: PluginCatalogEntry): Promise<void> => {
+    setConnectError(null);
+    setConnectingId(entry.id);
+    await add(oauthInput(entry));
+    setConnectingId(null);
+  };
+
+  /** Re-run the OAuth flow for an installed server (e.g. after token expiry). */
+  const reconnect = async (id: string): Promise<void> => {
+    setConnectError(null);
+    setConnectingId(id);
+    const result = await connect(id);
+    setConnectingId(null);
+    if (!result.ok && result.error) {
+      setConnectError({ id, text: result.error });
+    }
+  };
+
+  /** A required env field is still empty (blocks Add/Test for key servers). */
+  const requiredMissing = (d: Draft): boolean =>
+    !d.custom && d.envFields.some((f) => f.required && !(d.envValues[f.key] ?? "").trim());
+
   const closeDraft = (): void => {
     setDraft(null);
     setProbeMsg(null);
@@ -173,10 +236,25 @@ export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement
   const renderAddButton = (entry: PluginCatalogEntry): ReactElement => {
     const existing = installedByCatalogId.get(entry.id);
     if (existing) {
+      const connected = existing.status === "connected";
       return (
-        <span className="plugin-added-tag">
-          <Check size={13} /> Added
+        <span className={connected ? "plugin-added-tag" : "plugin-added-tag pending"}>
+          <Check size={13} /> {connected ? "Connected" : "Added"}
         </span>
+      );
+    }
+    if (entry.auth === "oauth") {
+      const connecting = connectingId === entry.id;
+      return (
+        <button
+          className="plugin-add"
+          type="button"
+          disabled={connecting}
+          onClick={() => void connectCatalog(entry)}
+        >
+          {connecting ? <Loader2 size={13} className="spin" /> : null}
+          {connecting ? "Authorize…" : "Connect"}
+        </button>
       );
     }
     return (
@@ -219,7 +297,7 @@ export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement
         </div>
       </header>
 
-      {tab === "skills" && <SkillsPanel skills={skills} />}
+      {tab === "skills" && <SkillsPanel skills={skills} autoNew={skillsAutoNew} />}
 
       {tab === "plugins" && (
         <>
@@ -279,8 +357,30 @@ export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement
                 <div className="plugin-body">
                   <strong>{plugin.name}</strong>
                   <StatusDot plugin={plugin} />
+                  {connectError?.id === plugin.id && (
+                    <p className="plugin-probe err">{connectError.text}</p>
+                  )}
                 </div>
                 <div className="plugin-actions">
+                  {plugin.status !== "connected" && (
+                    <button
+                      className="plugin-add"
+                      type="button"
+                      disabled={connectingId === plugin.id}
+                      onClick={() => void reconnect(plugin.id)}
+                    >
+                      {connectingId === plugin.id ? (
+                        <Loader2 size={13} className="spin" />
+                      ) : (
+                        <RefreshCw size={13} />
+                      )}
+                      {connectingId === plugin.id
+                        ? plugin.auth === "oauth"
+                          ? "Authorize…"
+                          : "Connecting…"
+                        : "Reconnect"}
+                    </button>
+                  )}
                   <label className="plugin-switch" title={plugin.enabled ? "Enabled" : "Disabled"}>
                     <input
                       type="checkbox"
@@ -357,6 +457,16 @@ export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement
             </header>
 
             <div className="plugin-modal-body">
+              {draft.keyUrl && (
+                <button
+                  className="plugin-getkey"
+                  type="button"
+                  onClick={() => openExternal(draft.keyUrl as string)}
+                >
+                  Get your key
+                  <ExternalLink size={13} />
+                </button>
+              )}
               {draft.custom && (
                 <label className="plugin-field">
                   <span>Name</span>
@@ -452,11 +562,21 @@ export const PluginsView = ({ plugins, skills }: PluginsViewProps): ReactElement
             </div>
 
             <footer className="plugin-modal-foot">
-              <button className="plugin-secondary" type="button" disabled={busy} onClick={runProbe}>
+              <button
+                className="plugin-secondary"
+                type="button"
+                disabled={busy || requiredMissing(draft)}
+                onClick={runProbe}
+              >
                 {busy ? <Loader2 size={14} className="spin" /> : null}
                 Test connection
               </button>
-              <button className="plugin-primary" type="button" disabled={busy} onClick={saveDraft}>
+              <button
+                className="plugin-primary"
+                type="button"
+                disabled={busy || requiredMissing(draft)}
+                onClick={saveDraft}
+              >
                 Add plugin
               </button>
             </footer>

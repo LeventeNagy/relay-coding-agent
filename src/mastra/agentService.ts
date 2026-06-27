@@ -20,13 +20,39 @@ const instructionsFor = (mode: WorkspaceMode): string => {
   }
 };
 
+type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; image: string; mimeType: string };
+
+/** Build a user turn's content: text + image parts + inlined document text. */
+const userContent = (message: AgentMessage): string | ContentPart[] => {
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 0) {
+    return message.content;
+  }
+  const parts: ContentPart[] = [];
+  if (message.content) {
+    parts.push({ type: "text", text: message.content });
+  }
+  for (const att of attachments) {
+    if (att.kind === "image" && att.imageBase64) {
+      // Pass raw base64 + an explicit mime; a full data URI makes the AI SDK
+      // mis-sniff the media type, which strict vision endpoints reject.
+      parts.push({ type: "image", image: att.imageBase64, mimeType: att.mimeType });
+    } else if (att.kind === "document" && att.text) {
+      parts.push({ type: "text", text: `Attached document "${att.name}":\n\n${att.text}` });
+    }
+  }
+  return parts.length > 0 ? parts : message.content;
+};
+
 const toModelMessages = (messages: AgentMessage[]) => {
   return messages
     .filter((message) => message.role !== "system")
     .map((message) =>
       message.role === "assistant"
         ? { role: "assistant" as const, content: message.content }
-        : { role: "user" as const, content: message.content }
+        : { role: "user" as const, content: userContent(message) }
     );
 };
 

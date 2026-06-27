@@ -2,13 +2,44 @@ export type AgentRole = "user" | "assistant" | "system";
 
 export type WorkspaceMode = "chat" | "code";
 
+/**
+ * A file the user attached to a message. Images are stored on disk under
+ * userData and referenced by `id` (read back via `attachments:read`); documents
+ * are extracted to text at ingest time and carry it inline in `text`.
+ */
+export interface Attachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  kind: "image" | "document";
+  /** Extracted text for documents (pdf/docx/plain); absent for images. */
+  text?: string;
+  /**
+   * Transient *raw* base64 of an image (no data-URL prefix), injected by the
+   * main process just before streaming so the model can see it. Paired with
+   * `mimeType` to build a correctly-typed image part — passing a full data URI
+   * instead makes the AI SDK mis-sniff the media type. Never persisted.
+   */
+  imageBase64?: string;
+}
+
 export interface AgentMessage {
   id: string;
   role: AgentRole;
   content: string;
+  /** Files attached to this turn (images + documents). */
+  attachments?: Attachment[];
   /** Streamed reasoning ("thinking") text, when the model emits it. */
   reasoning?: string;
   createdAt: string;
+}
+
+/** A file handed from the renderer to `attachments:ingest` (base64-encoded). */
+export interface RawAttachment {
+  name: string;
+  mimeType: string;
+  /** Base64 of the raw file bytes (no data-URL prefix). */
+  data: string;
 }
 
 /** Per-request reasoning controls (currently Z.AI / GLM). */

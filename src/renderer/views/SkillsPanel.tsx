@@ -1,4 +1,4 @@
-import { ReactElement, useState } from "react";
+import { ReactElement, useEffect, useState } from "react";
 import { Code2, Loader2, MessageCircle, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { allModes, slugify } from "../../shared/skills/types";
 import type { Skill } from "../../shared/skills/types";
@@ -7,6 +7,8 @@ import type { SkillsController } from "../hooks/useSkills";
 
 interface SkillsPanelProps {
   skills: SkillsController;
+  /** Open the new-skill form immediately (from "+" → Skills → Add skill). */
+  autoNew?: boolean;
 }
 
 interface Draft {
@@ -32,10 +34,17 @@ const draftFromSkill = (skill: Skill): Draft => ({
   modes: skill.modes.length ? skill.modes : allModes()
 });
 
-export const SkillsPanel = ({ skills }: SkillsPanelProps): ReactElement => {
+export const SkillsPanel = ({ skills, autoNew = false }: SkillsPanelProps): ReactElement => {
   const { skills: list, save, remove } = skills;
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(autoNew ? blankDraft() : null);
   const [busy, setBusy] = useState(false);
+
+  // Open the new-skill form when the panel mounts via "+ → Skills → Add skill".
+  useEffect(() => {
+    if (autoNew) {
+      setDraft((current) => current ?? blankDraft());
+    }
+  }, [autoNew]);
 
   const previewSlug = draft ? slugify(draft.name || "skill") : "";
 

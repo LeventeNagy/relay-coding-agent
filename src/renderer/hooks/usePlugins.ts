@@ -12,8 +12,11 @@ export interface PluginsController {
   ready: boolean;
   add: (input: PluginInput) => Promise<void>;
   probe: (input: PluginInput) => Promise<PluginProbeResult>;
+  /** Run (or re-run) the OAuth browser flow; returns the attempt result. */
+  connect: (id: string) => Promise<PluginProbeResult>;
   toggle: (id: string, enabled: boolean) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  openExternal: (url: string) => void;
   refresh: () => Promise<void>;
 }
 
@@ -54,6 +57,9 @@ export const usePlugins = (): PluginsController => {
     };
   }, []);
 
+  // Refresh when main pushes a change (e.g. startup status hydration).
+  useEffect(() => window.plugins.onChanged(() => void refresh()), [refresh]);
+
   const add = useCallback(async (input: PluginInput) => {
     try {
       setInstalled(await window.plugins.add(input));
@@ -73,6 +79,20 @@ export const usePlugins = (): PluginsController => {
     []
   );
 
+  const connect = useCallback(async (id: string): Promise<PluginProbeResult> => {
+    try {
+      const { result, plugins } = await window.plugins.connect(id);
+      setInstalled(plugins);
+      return result;
+    } catch (error) {
+      return { ok: false, tools: [], error: error instanceof Error ? error.message : String(error) };
+    }
+  }, []);
+
+  const openExternal = useCallback((url: string): void => {
+    void window.plugins.openExternal(url);
+  }, []);
+
   const toggle = useCallback(async (id: string, enabled: boolean) => {
     try {
       setInstalled(await window.plugins.toggle(id, enabled));
@@ -91,5 +111,5 @@ export const usePlugins = (): PluginsController => {
     }
   }, []);
 
-  return { catalog, installed, ready, add, probe, toggle, remove, refresh };
+  return { catalog, installed, ready, add, probe, connect, openExternal, toggle, remove, refresh };
 };

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
 import { streamMessage } from "../mastra/agentService";
 import { getProviderModels } from "./modelRegistry";
@@ -10,18 +10,29 @@ import {
   setProviderKey
 } from "./settingsStore";
 import { deleteSession, getSession, listSessions, saveSession } from "./sessionStore";
-import { listServers, removeServer, setEnabled, upsertServer } from "./mcpStore";
+import { getServer, listServers, removeServer, setEnabled, upsertServer } from "./mcpStore";
 import {
+  connectOAuth,
+  disconnectOAuth,
   dispose as disposeMcp,
   getActiveToolsets,
   listSummaries,
   probeServer,
-  pruneStatuses
+  pruneStatuses,
+  refreshStatuses
 } from "./mcpManager";
 import { pluginCatalog } from "../shared/plugins/catalog";
 import { deleteSkill, listSkills, saveSkill } from "./skillStore";
 import { nativeTools } from "./nativeTools";
-import type { AgentRequest, AgentRunHandle, ChatSession, WorkspaceMode } from "../shared/agent/types";
+import { ingest as ingestAttachments, readBase64, read as readAttachment } from "./attachmentStore";
+import type {
+  AgentMessage,
+  AgentRequest,
+  AgentRunHandle,
+  ChatSession,
+  RawAttachment,
+  WorkspaceMode
+} from "../shared/agent/types";
 import type { PluginInput, PluginServerConfig } from "../shared/plugins/types";
 import type { SkillInput } from "../shared/skills/types";
 
@@ -33,13 +44,24 @@ const configFromInput = (input: PluginInput): PluginServerConfig => ({
   id: input.id ?? createPluginId(),
   catalogId: input.catalogId,
   name: input.name,
-  transport: "stdio",
+  transport: input.transport ?? "stdio",
+  auth: input.auth,
+  url: input.url,
   command: input.command,
   args: input.args,
   env: input.env,
   // Preserve enabled state on edit; new servers start enabled.
   enabled: input.id ? (listServers().find((s) => s.id === input.id)?.enabled ?? true) : true
 });
+
+/** Tell every open window the plugin list/status changed (after startup hydrate). */
+const broadcastPlugins = (): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send("plugins:changed");
+    }
+  }
+};
 
 const createWindow = (): void => {
   nativeTheme.themeSource = "dark";
@@ -92,25 +114,51 @@ const registerIpc = (): void => {
   ipcMain.handle("plugins:add", async (_event, input: PluginInput) => {
     const config = configFromInput(input);
     upsertServer(config);
-    // Best-effort probe so the UI shows connected/tools immediately.
-    await probeServer(config).catch(() => undefined);
+    // OAuth servers connect via the browser flow; others get a best-effort probe
+    // so the UI shows connected/tools immediately.
+    if (config.transport === "http" && config.auth === "oauth") {
+      await connectOAuth(config).catch(() => undefined);
+    } else {
+      await probeServer(config).catch(() => undefined);
+    }
     return listSummaries();
   });
   ipcMain.handle("plugins:probe", (_event, input: PluginInput) => probeServer(configFromInput(input)));
+  // Run (or re-run) the OAuth browser flow for an installed server.
+  ipcMain.handle("plugins:connect", async (_event, id: string) => {
+    const server = getServer(id);
+    const result = server
+      ? server.transport === "http" && server.auth === "oauth"
+        ? await connectOAuth(server)
+        : await probeServer(server)
+      : { ok: false, tools: [], error: "Server not found." };
+    return { result, plugins: listSummaries() };
+  });
   ipcMain.handle("plugins:toggle", (_event, id: string, enabled: boolean) => {
     setEnabled(id, enabled);
     return listSummaries();
   });
   ipcMain.handle("plugins:remove", (_event, id: string) => {
+    disconnectOAuth(id);
     removeServer(id);
     pruneStatuses();
     return listSummaries();
+  });
+  // Open an external URL (e.g. a provider's "create API key" page) in the browser.
+  ipcMain.handle("plugins:open-external", (_event, url: string) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
   });
 
   // --- Skills (reusable instructions referenced with /<slug>) ---
   ipcMain.handle("skills:list", () => listSkills());
   ipcMain.handle("skills:save", (_event, input: SkillInput) => saveSkill(input));
   ipcMain.handle("skills:delete", (_event, id: string) => deleteSkill(id));
+
+  // --- Attachments (images stored on disk; documents extracted to text) ---
+  ipcMain.handle("attachments:ingest", (_event, files: RawAttachment[]) => ingestAttachments(files));
+  ipcMain.handle("attachments:read", (_event, id: string) => readAttachment(id));
 
   // --- Agent streaming ---
   // Renderer invokes "agent:start" and gets a runId synchronously; deltas are
@@ -123,6 +171,21 @@ const registerIpc = (): void => {
     // them (escape hatch if a specific model misbehaves with tools attached).
     const toolsEnabled = process.env.RELAY_NATIVE_TOOLS !== "0";
 
+    // Inline image attachments as data URLs so the model can see them. Read from
+    // disk here (keeps agentService electron-free); document text already rides
+    // inline on the message from ingest. Mutates only this transient copy.
+    const enriched: AgentMessage[] = request.messages.map((message) => {
+      if (!message.attachments?.some((att) => att.kind === "image")) {
+        return message;
+      }
+      return {
+        ...message,
+        attachments: message.attachments.map((att) =>
+          att.kind === "image" ? { ...att, imageBase64: readBase64(att.id) ?? undefined } : att
+        )
+      };
+    });
+
     void (async () => {
       // Fetch live MCP toolsets for enabled plugins; failures shouldn't block chat.
       const toolsets = await getActiveToolsets().catch(() => undefined);
@@ -130,7 +193,7 @@ const registerIpc = (): void => {
         runId,
         model: request.model,
         activeTab: request.activeTab,
-        messages: request.messages,
+        messages: enriched,
         toolsets,
         tools: toolsEnabled ? nativeTools : undefined,
         thinking: request.thinking,
@@ -151,6 +214,10 @@ app.whenReady().then(() => {
   applyKeysToEnv();
   registerIpc();
   createWindow();
+
+  // Hydrate live plugin status in the background (statuses are in-memory, so a
+  // restart starts blank); push the result to the UI when done.
+  void refreshStatuses().then(broadcastPlugins);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentMessage,
+  Attachment,
   ChatSession,
   SessionSummary,
   ThinkingOptions,
@@ -31,7 +32,12 @@ export interface SessionsController {
   activeSessionId: string | null;
   messages: AgentMessage[];
   isStreaming: boolean;
-  send: (text: string, skills?: SkillRef[], thinking?: ThinkingOptions) => void;
+  send: (
+    text: string,
+    skills?: SkillRef[],
+    thinking?: ThinkingOptions,
+    attachments?: Attachment[]
+  ) => void;
   newSession: () => void;
   openSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -152,9 +158,10 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
   }, [mode, newSession]);
 
   const send = useCallback(
-    (text: string, skills?: SkillRef[], thinking?: ThinkingOptions) => {
+    (text: string, skills?: SkillRef[], thinking?: ThinkingOptions, attachments?: Attachment[]) => {
       const trimmed = text.trim();
-      if (!trimmed || !model || streamingId) {
+      const hasAttachments = Boolean(attachments && attachments.length > 0);
+      if ((!trimmed && !hasAttachments) || !model || streamingId) {
         return;
       }
 
@@ -162,6 +169,7 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
         id: createId("user"),
         role: "user",
         content: trimmed,
+        attachments: hasAttachments ? attachments : undefined,
         createdAt: new Date().toISOString()
       };
       const runId = createId("run");

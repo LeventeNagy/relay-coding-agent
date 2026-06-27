@@ -52,14 +52,16 @@ const persist = (state: PersistedShape): void => {
   writeFileSync(path, JSON.stringify(state, null, 2), "utf8");
 };
 
-const encryptValue = (value: string): string => {
+/** Encrypt one secret string (safeStorage, or base64 fallback). Shared with mcpOAuth. */
+export const encryptValue = (value: string): string => {
   if (safeStorage.isEncryptionAvailable()) {
     return safeStorage.encryptString(value).toString("base64");
   }
   return Buffer.from(value, "utf8").toString("base64");
 };
 
-const decryptValue = (cipher: string, encrypted: boolean): string | null => {
+/** Decrypt a value produced by encryptValue; `encrypted` is the file-level flag. */
+export const decryptValue = (cipher: string, encrypted: boolean): string | null => {
   try {
     const buf = Buffer.from(cipher, "base64");
     if (encrypted) {

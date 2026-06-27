@@ -1047,8 +1047,9 @@ button {
 
 .chat-composer {
   position: relative;
-  display: grid;
-  grid-template-rows: minmax(76px, auto) auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   width: 100%;
   min-height: 126px;
   padding: 18px 20px 14px;
@@ -1056,6 +1057,233 @@ button {
   border-radius: 22px;
   background: #2a2a25;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.chat-composer.drag-over {
+  border-color: var(--orange);
+  background: #302b24;
+}
+
+.composer-input {
+  flex: 1 1 auto;
+}
+
+/* Staged attachments above the input (thumbnails + document chips). */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pending-attachment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.pending-attachment.pending-image {
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+}
+
+.pending-attachment.pending-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pending-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 7px 22px 7px 10px;
+  color: var(--body);
+  font-size: 12px;
+}
+
+.pending-doc .pending-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: #3a3932;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.pending-remove:hover {
+  background: #4a4940;
+}
+
+.composer-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--orange);
+}
+
+/* Attachments rendered inside a sent message bubble. */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attachment-image {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+.attachment-image-loading {
+  width: 120px;
+  height: 80px;
+  background: var(--panel-soft);
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  color: var(--body);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "+" add menu above the composer */
+.plus-menu-wrap {
+  position: relative;
+}
+
+.plus-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  min-width: 256px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.plus-menu li {
+  list-style: none;
+}
+
+.plus-menu button[role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--body);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plus-menu button[role="menuitem"]:hover:not(:disabled),
+.plus-sub:hover > button[role="menuitem"]:not(:disabled) {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.plus-menu button[role="menuitem"]:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.plus-menu button[role="menuitem"] svg {
+  flex: 0 0 auto;
+}
+
+.plus-label {
+  flex: 1 1 auto;
+}
+
+.plus-shortcut {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.plus-soon {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.plus-caret {
+  color: var(--muted);
+}
+
+.plus-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--line);
+}
+
+/* Right-side flyout submenus (Skills, Add to project) */
+.plus-sub {
+  position: relative;
+}
+
+.plus-submenu {
+  position: absolute;
+  left: 100%;
+  top: -6px;
+  display: none;
+  min-width: 200px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.plus-sub:hover > .plus-submenu {
+  display: block;
 }
 
 /* Slash-command (skills) menu above the composer */
@@ -1853,9 +2081,20 @@ button {
   cursor: pointer;
 }
 
-.plugin-add:hover {
+.plugin-add:hover:not(:disabled) {
   border-color: var(--orange);
   color: var(--orange);
+}
+
+.plugin-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plugin-add:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .plugin-added-tag {
@@ -1865,6 +2104,30 @@ button {
   color: var(--green);
   font-size: 12px;
   font-weight: 600;
+}
+
+.plugin-added-tag.pending {
+  color: var(--muted);
+}
+
+/* "Get your key →" deep-link inside the key-entry modal */
+.plugin-getkey {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--body);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.plugin-getkey:hover {
+  border-color: var(--orange);
+  color: var(--orange);
 }
 
 .plugin-status {

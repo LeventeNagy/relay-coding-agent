@@ -150,6 +150,27 @@ export const reasoningCapsFor = (model: string | null): ReasoningCaps | null => 
   return null;
 };
 
+/**
+ * Best-effort guess at whether a model can read image inputs. Used only to show
+ * a non-blocking "this model may not read images" hint — attaching is never
+ * prevented (an unsupported model just surfaces the provider's error).
+ */
+export const supportsVision = (model: string | null): boolean => {
+  if (!model) {
+    return false;
+  }
+  const id = model.toLowerCase();
+  return (
+    /gpt-4o|gpt-4\.1|gpt-5|o3|o4|chatgpt/.test(id) ||
+    /claude-3|claude-4|claude-opus|claude-sonnet|claude-haiku/.test(id) ||
+    /gemini/.test(id) ||
+    /llama-?3\.2|llama-?4|llava|pixtral|qwen.*vl|qwen-?vl|internvl/.test(id) ||
+    /glm-.*v\b|glm-4v|glm-4\.\d+v/.test(id) ||
+    /grok.*vision|grok-2-vision|step-1v|yi-vision/.test(id) ||
+    /\bvision\b|-vl-|multimodal/.test(id)
+  );
+};
+
 /** One selectable model in the chat picker. */
 export interface ModelOption {
   /** Full Mastra router id, e.g. "openrouter/deepseek/deepseek-chat-v3.1". */

@@ -3,14 +3,17 @@ import type {
   AgentRequest,
   AgentRunHandle,
   AgentStreamEvent,
+  Attachment,
   ChatSession,
   ProviderModels,
+  RawAttachment,
   SessionSummary,
   SettingsState,
   WorkspaceMode
 } from "../shared/agent/types";
 import type {
   PluginCatalogEntry,
+  PluginConnectResult,
   PluginInput,
   PluginProbeResult,
   PluginSummary
@@ -79,11 +82,25 @@ const pluginsApi = {
   probe(input: PluginInput): Promise<PluginProbeResult> {
     return ipcRenderer.invoke("plugins:probe", input);
   },
+  /** Run (or re-run) the OAuth browser flow for an installed server. */
+  connect(id: string): Promise<PluginConnectResult> {
+    return ipcRenderer.invoke("plugins:connect", id);
+  },
   toggle(id: string, enabled: boolean): Promise<PluginSummary[]> {
     return ipcRenderer.invoke("plugins:toggle", id, enabled);
   },
   remove(id: string): Promise<PluginSummary[]> {
     return ipcRenderer.invoke("plugins:remove", id);
+  },
+  /** Open an external URL (e.g. a provider's "create key" page) in the browser. */
+  openExternal(url: string): Promise<void> {
+    return ipcRenderer.invoke("plugins:open-external", url);
+  },
+  /** Subscribe to plugin list/status changes (e.g. startup status hydration). */
+  onChanged(listener: () => void): () => void {
+    const handler = (): void => listener();
+    ipcRenderer.on("plugins:changed", handler);
+    return () => ipcRenderer.removeListener("plugins:changed", handler);
   }
 };
 
@@ -105,14 +122,27 @@ const skillsApi = {
   }
 };
 
+const attachmentsApi = {
+  /** Persist images / extract document text; returns attachment refs. */
+  ingest(files: RawAttachment[]): Promise<Attachment[]> {
+    return ipcRenderer.invoke("attachments:ingest", files);
+  },
+  /** Read a stored image back as a data URL (null if missing). */
+  read(id: string): Promise<string | null> {
+    return ipcRenderer.invoke("attachments:read", id);
+  }
+};
+
 contextBridge.exposeInMainWorld("agent", agentApi);
 contextBridge.exposeInMainWorld("settings", settingsApi);
 contextBridge.exposeInMainWorld("providers", providersApi);
 contextBridge.exposeInMainWorld("sessions", sessionsApi);
 contextBridge.exposeInMainWorld("plugins", pluginsApi);
 contextBridge.exposeInMainWorld("skills", skillsApi);
+contextBridge.exposeInMainWorld("attachments", attachmentsApi);
 
 export type AgentApi = typeof agentApi;
+export type AttachmentsApi = typeof attachmentsApi;
 export type SettingsApi = typeof settingsApi;
 export type ProvidersApi = typeof providersApi;
 export type SessionsApi = typeof sessionsApi;

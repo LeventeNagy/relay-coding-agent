@@ -1,6 +1,6 @@
 /**
  * Plugin = an MCP server Relay connects to. Its tools are injected into the
- * agent at run time (see mcpManager.getActiveToolsets). `stdio` servers are
+ * agent at run time (see mcpManager.getToolsetsFor). `stdio` servers are
  * local subprocesses; `http` servers are remote endpoints (with OAuth or a
  * bearer token).
  */
@@ -8,6 +8,14 @@ export type PluginTransport = "stdio" | "http";
 
 /** How a server authenticates: OAuth browser flow, an API key, or nothing. */
 export type PluginAuth = "oauth" | "key" | "none";
+
+/**
+ * Which workspace mode(s) a plugin is offered in. Chat-eligible plugins appear
+ * in the chat composer's "+" menu; `code`-only ones (local-repo dev tools like
+ * GitHub) are hidden from chat and reserved for the future code mode. Defaults
+ * to "both" when omitted.
+ */
+export type PluginScope = "chat" | "code" | "both";
 
 /** Connection status, derived from the last connect/probe attempt. */
 export type PluginStatus = "idle" | "connected" | "error";
@@ -23,6 +31,8 @@ export interface PluginServerConfig {
   auth?: PluginAuth;
   /** Remote endpoint for `http` transport. */
   url?: string;
+  /** Which workspace mode(s) this plugin is offered in (defaults to "both"). */
+  scope?: PluginScope;
   /** Command/args for `stdio` transport (empty for `http`). */
   command: string;
   args: string[];
@@ -41,6 +51,8 @@ export interface PluginSummary {
   name: string;
   transport: PluginTransport;
   auth?: PluginAuth;
+  /** Which workspace mode(s) this plugin is offered in (defaults to "both"). */
+  scope?: PluginScope;
   command: string;
   args: string[];
   /** Names of configured env vars (values withheld from the renderer). */
@@ -76,6 +88,8 @@ export interface PluginCatalogEntry {
   auth?: PluginAuth;
   /** Remote endpoint for `http`/OAuth servers. */
   url?: string;
+  /** Which workspace mode(s) this plugin is offered in (defaults to "both"). */
+  scope?: PluginScope;
   /** Deep-link to where the user creates an API key (for `key` servers). */
   keyUrl?: string;
   /** Command for `stdio` servers (optional for `http`). */
@@ -110,6 +124,7 @@ export interface PluginInput {
   transport?: PluginTransport;
   auth?: PluginAuth;
   url?: string;
+  scope?: PluginScope;
   command: string;
   args: string[];
   env: Record<string, string>;

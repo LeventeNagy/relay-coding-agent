@@ -1,12 +1,28 @@
 import { MCPClient } from "@mastra/mcp";
 import type {
+  PluginScope,
   PluginServerConfig,
   PluginProbeResult,
   PluginStatus,
   PluginSummary
 } from "../shared/plugins/types";
+import type { WorkspaceMode } from "../shared/agent/types";
 import { enabledServers, listServers } from "./mcpStore";
 import { authorize, buildOAuthProvider, clearTokens, hasTokens } from "./mcpOAuth";
+import { catalogById } from "../shared/plugins/catalog";
+
+/**
+ * A plugin's effective scope: its stored value, or (for servers installed before
+ * the field existed) the catalog default, falling back to "both".
+ */
+const resolveScope = (server: PluginServerConfig): PluginScope =>
+  server.scope ?? (server.catalogId ? catalogById(server.catalogId)?.scope : undefined) ?? "both";
+
+/** Whether a server may run in the given workspace mode (chat hides code-only tools). */
+const allowedInMode = (server: PluginServerConfig, mode: WorkspaceMode): boolean => {
+  const scope = resolveScope(server);
+  return scope === "both" || scope === mode;
+};
 
 /**
  * Owns live MCPClient connections in the main process. Builds one cached client
@@ -60,12 +76,23 @@ const toServerDef = (config: PluginServerConfig): Record<string, unknown> => {
 };
 
 /**
- * Returns namespaced toolsets for all enabled servers, or undefined if none.
- * Reuses the cached client unless the enabled config changed. Also refreshes
- * per-server status so the UI can reflect connection results.
+ * Returns namespaced toolsets for the given selection of plugin ids (the active
+ * set chosen for one conversation), or undefined if none resolve. Only enabled,
+ * installed servers in `ids` are connected — so a chat loads exactly the plugins
+ * the user toggled on, nothing else. Reuses the cached client unless the
+ * resolved config changed, and refreshes per-server status for the UI.
  */
-export const getActiveToolsets = async (): Promise<Toolsets | undefined> => {
-  const servers = enabledServers();
+export const getToolsetsFor = async (
+  ids: string[],
+  mode: WorkspaceMode
+): Promise<Toolsets | undefined> => {
+  const wanted = new Set(ids);
+  // Only the chosen, enabled servers that are allowed in this mode — so a
+  // code-only plugin (e.g. GitHub) can never load in chat, even if a stale
+  // session still has its id selected.
+  const servers = enabledServers().filter(
+    (server) => wanted.has(server.id) && allowedInMode(server, mode)
+  );
   if (servers.length === 0) {
     await dispose();
     return undefined;
@@ -199,6 +226,9 @@ export const listSummaries = (): PluginSummary[] =>
       name: server.name,
       transport: server.transport,
       auth: server.auth,
+      // Resolve scope (backfilled from the catalog for old installs) so code-only
+      // plugins like GitHub stay out of the chat menu.
+      scope: resolveScope(server),
       command: server.command,
       args: server.args,
       envKeys: Object.keys(server.env).filter((k) => k !== "__bearer"),

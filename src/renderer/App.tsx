@@ -1,4 +1,4 @@
-import { CSSProperties, PointerEvent, ReactElement, useEffect, useState } from "react";
+import { CSSProperties, PointerEvent, ReactElement, useEffect, useMemo, useState } from "react";
 import { Blocks, Code2, Columns2, MessageCircle, Plus, Search, Settings, Trash2 } from "lucide-react";
 import { useSessions } from "./hooks/useSessions";
 import { useSettings } from "./hooks/useSettings";
@@ -56,7 +56,18 @@ export const App = (): ReactElement => {
     setActiveView("plugins");
   };
 
-  const chat = useSessions(activeWorkspace, settings.state.activeModel);
+  // Chat-eligible plugins (code-only ones like GitHub are hidden from chat), and
+  // the default active set for a new conversation = the connected ones.
+  const chatPlugins = useMemo(
+    () => plugins.installed.filter((p) => p.scope !== "code"),
+    [plugins.installed]
+  );
+  const defaultPluginIds = useMemo(
+    () => chatPlugins.filter((p) => p.enabled && p.status === "connected").map((p) => p.id),
+    [chatPlugins]
+  );
+
+  const chat = useSessions(activeWorkspace, settings.state.activeModel, defaultPluginIds);
   const activeWorkspaceLabel = workspaceTabs.find((tab) => tab.id === activeWorkspace)?.label ?? "Chat";
 
   // Auto-select the first usable model once keys are loaded and none is chosen.
@@ -211,6 +222,8 @@ export const App = (): ReactElement => {
               skills={skills}
               mode={activeWorkspace}
               modeLabel={activeWorkspaceLabel}
+              chatPlugins={chatPlugins}
+              defaultPluginIds={defaultPluginIds}
               onAddSkill={() => openSkills(true)}
               onManageSkills={() => openSkills(false)}
               onOpenPlugins={openPlugins}

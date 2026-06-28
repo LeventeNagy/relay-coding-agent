@@ -14,7 +14,7 @@ import {
 import type { PluginsController } from "../hooks/usePlugins";
 import type { SkillsController } from "../hooks/useSkills";
 import { SkillsPanel } from "./SkillsPanel";
-import type { PluginCatalogEntry, PluginInput, PluginSummary } from "../../shared/plugins/types";
+import type { PluginCatalogEntry, PluginInput, PluginScope, PluginSummary } from "../../shared/plugins/types";
 
 type PluginsTab = "plugins" | "skills";
 
@@ -44,6 +44,8 @@ interface Draft {
   envValues: Record<string, string>;
   /** Deep-link to the provider's "create API key" page, if any. */
   keyUrl?: string;
+  /** Which workspace mode(s) this plugin is offered in (carried from the catalog). */
+  scope?: PluginScope;
 }
 
 const ALL = "All";
@@ -59,7 +61,8 @@ const draftFromCatalog = (entry: PluginCatalogEntry): Draft => ({
   argValues: (entry.argHints ?? []).map(() => ""),
   envFields: (entry.envHints ?? []).map((h) => ({ ...h })),
   envValues: {},
-  keyUrl: entry.keyUrl
+  keyUrl: entry.keyUrl,
+  scope: entry.scope
 });
 
 /** Build the add payload for a one-click OAuth catalog entry (no modal). */
@@ -69,6 +72,7 @@ const oauthInput = (entry: PluginCatalogEntry): PluginInput => ({
   transport: "http",
   auth: "oauth",
   url: entry.url,
+  scope: entry.scope,
   command: "",
   args: [],
   env: {}
@@ -96,7 +100,7 @@ const draftToInput = (draft: Draft): PluginInput => {
       env[key] = value.trim();
     }
   }
-  return { id: draft.editingId, catalogId: draft.catalogId, name: draft.name.trim() || "Untitled server", command: draft.command.trim(), args, env };
+  return { id: draft.editingId, catalogId: draft.catalogId, name: draft.name.trim() || "Untitled server", command: draft.command.trim(), args, env, scope: draft.scope };
 };
 
 const StatusDot = ({ plugin }: { plugin: PluginSummary }): ReactElement => {

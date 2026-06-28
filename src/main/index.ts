@@ -15,7 +15,7 @@ import {
   connectOAuth,
   disconnectOAuth,
   dispose as disposeMcp,
-  getActiveToolsets,
+  getToolsetsFor,
   listSummaries,
   probeServer,
   pruneStatuses,
@@ -47,6 +47,7 @@ const configFromInput = (input: PluginInput): PluginServerConfig => ({
   transport: input.transport ?? "stdio",
   auth: input.auth,
   url: input.url,
+  scope: input.scope,
   command: input.command,
   args: input.args,
   env: input.env,
@@ -187,8 +188,11 @@ const registerIpc = (): void => {
     });
 
     void (async () => {
-      // Fetch live MCP toolsets for enabled plugins; failures shouldn't block chat.
-      const toolsets = await getActiveToolsets().catch(() => undefined);
+      // Fetch live MCP toolsets for the plugins this conversation activated;
+      // failures shouldn't block chat. Empty selection → no toolsets.
+      const toolsets = await getToolsetsFor(request.activePluginIds ?? [], request.activeTab).catch(
+        () => undefined
+      );
       await streamMessage({
         runId,
         model: request.model,

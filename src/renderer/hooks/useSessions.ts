@@ -32,6 +32,13 @@ export interface SessionsController {
   activeSessionId: string | null;
   messages: AgentMessage[];
   isStreaming: boolean;
+  /**
+   * Plugin ids active in the current conversation, or `null` when the user
+   * hasn't chosen — callers treat `null` as "use the connected-chat default".
+   */
+  activePluginIds: string[] | null;
+  /** Set the active plugins for this conversation (persists if a session exists). */
+  setActivePluginIds: (ids: string[]) => void;
   send: (
     text: string,
     skills?: SkillRef[],
@@ -50,11 +57,17 @@ export interface SessionsController {
  * a session record is created and saved on the FIRST `send()`. After that, the
  * session is re-saved whenever a streamed run finishes.
  */
-export const useSessions = (mode: WorkspaceMode, model: string | null): SessionsController => {
+export const useSessions = (
+  mode: WorkspaceMode,
+  model: string | null,
+  /** Connected, chat-scoped plugin ids — the default active set for new chats. */
+  defaultPluginIds: string[]
+): SessionsController => {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [activePluginIds, setActivePluginIdsState] = useState<string[] | null>(null);
 
   // Refs so the once-registered event handler and persistence effect see fresh values.
   const messagesRef = useRef<AgentMessage[]>([]);
@@ -62,9 +75,16 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
   const modeRef = useRef<WorkspaceMode>(mode);
   const modelRef = useRef<string | null>(model);
   const prevStreamingRef = useRef<string | null>(null);
+  const activePluginIdsRef = useRef<string[] | null>(null);
+  const defaultPluginIdsRef = useRef<string[]>(defaultPluginIds);
   messagesRef.current = messages;
   modeRef.current = mode;
   modelRef.current = model;
+  activePluginIdsRef.current = activePluginIds;
+  defaultPluginIdsRef.current = defaultPluginIds;
+
+  /** The set actually used this run: explicit selection, or the connected default. */
+  const resolvedPluginIds = (): string[] => activePluginIdsRef.current ?? defaultPluginIdsRef.current;
 
   const persistActive = useCallback((messagesToSave: AgentMessage[]) => {
     const meta = activeMetaRef.current;
@@ -77,6 +97,8 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
       mode: modeRef.current,
       model: meta.model ?? modelRef.current,
       messages: messagesToSave,
+      // Persist the concrete set this conversation used (resolves the default).
+      activePluginIds: resolvedPluginIds(),
       createdAt: meta.createdAt,
       updatedAt: new Date().toISOString()
     };
@@ -84,13 +106,25 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
       // eslint-disable-next-line no-console
       console.error("sessions.save failed:", error);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const setActivePluginIds = useCallback((ids: string[]) => {
+    activePluginIdsRef.current = ids;
+    setActivePluginIdsState(ids);
+    // Persist immediately if the conversation already exists on disk.
+    if (activeMetaRef.current) {
+      persistActive(messagesRef.current);
+    }
+  }, [persistActive]);
 
   const newSession = useCallback(() => {
     activeMetaRef.current = null;
     setActiveSessionId(null);
     setMessages([]);
     setStreamingId(null);
+    activePluginIdsRef.current = null;
+    setActivePluginIdsState(null);
   }, []);
 
   // Stream events (registered once); routed to the assistant message by runId.
@@ -200,9 +234,11 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
         model,
         activeTab: mode,
         skills: skills && skills.length > 0 ? skills : undefined,
-        thinking
+        thinking,
+        activePluginIds: resolvedPluginIds()
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [model, mode, streamingId, persistActive]
   );
 
@@ -222,6 +258,11 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
         setActiveSessionId(session.id);
         setMessages(session.messages);
         setStreamingId(null);
+        // Restore the saved active set; legacy sessions (undefined) fall back to
+        // the connected-chat default via `null`.
+        const restored = session.activePluginIds ?? null;
+        activePluginIdsRef.current = restored;
+        setActivePluginIdsState(restored);
       })
       .catch((error) => {
         // eslint-disable-next-line no-console
@@ -252,6 +293,8 @@ export const useSessions = (mode: WorkspaceMode, model: string | null): Sessions
     activeSessionId,
     messages,
     isStreaming: streamingId !== null,
+    activePluginIds,
+    setActivePluginIds,
     send,
     newSession,
     openSession,

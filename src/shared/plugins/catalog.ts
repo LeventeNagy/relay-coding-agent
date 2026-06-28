@@ -15,6 +15,7 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     description: "Read, write, and search files in a directory you choose.",
     category: "Developer Tools",
     featured: true,
+    scope: "code",
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-filesystem"],
     argHints: [{ label: "Allowed directory", placeholder: "C:\\\\projects\\\\my-app" }]
@@ -25,6 +26,7 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     description: "Inspect a local Git repository — status, diffs, logs, and history.",
     category: "Developer Tools",
     featured: true,
+    scope: "code",
     command: "npx",
     args: ["-y", "mcp-server-git", "--repository"],
     argHints: [{ label: "Repository path", placeholder: "C:\\\\projects\\\\my-app" }]
@@ -38,6 +40,8 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     // GitHub's MCP server doesn't support OAuth dynamic client registration, so
     // it uses a personal access token (one paste, with a deep-link to create it).
     auth: "key",
+    // Code-oriented: hidden from the chat "+" menu, reserved for code mode.
+    scope: "code",
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-github"],
     keyUrl: "https://github.com/settings/tokens",

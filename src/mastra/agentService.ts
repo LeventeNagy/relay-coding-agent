@@ -72,19 +72,38 @@ export interface StreamArgs {
   onEvent: (event: AgentStreamEvent) => void;
 }
 
-/** Compose mode instructions with any referenced skills for this run. */
+/** Collect the flat list of tool names across all namespaced toolsets. */
+const toolNamesFromToolsets = (
+  toolsets?: Record<string, Record<string, unknown>>
+): string[] => {
+  if (!toolsets) {
+    return [];
+  }
+  return Object.values(toolsets).flatMap((tools) => Object.keys(tools));
+};
+
+/** Compose mode instructions with referenced skills and any connected plugin tools. */
 const composeInstructions = (
   mode: WorkspaceMode,
-  skills?: Array<{ name: string; instructions: string }>
+  skills?: Array<{ name: string; instructions: string }>,
+  toolNames?: string[]
 ): string => {
-  const base = instructionsFor(mode);
-  if (!skills || skills.length === 0) {
-    return base;
+  let out = instructionsFor(mode);
+  // Tell the model which plugin tools it actually has, so it calls them instead
+  // of guessing. Weaker tool-callers ignore tools they're not told about.
+  if (toolNames && toolNames.length > 0) {
+    out +=
+      `\n\nYou have these connected plugin tools available: ${toolNames.join(", ")}. ` +
+      "When the user's request needs one (e.g. searching Notion, creating a Linear issue), " +
+      "call the tool instead of guessing or saying you can't.";
   }
-  const blocks = skills
-    .map((skill) => `## Skill: ${skill.name}\n${skill.instructions}`)
-    .join("\n\n");
-  return `${base}\n\nThe user invoked the following skill(s) for this request. Follow their guidance:\n\n${blocks}`;
+  if (skills && skills.length > 0) {
+    const blocks = skills
+      .map((skill) => `## Skill: ${skill.name}\n${skill.instructions}`)
+      .join("\n\n");
+    out += `\n\nThe user invoked the following skill(s) for this request. Follow their guidance:\n\n${blocks}`;
+  }
+  return out;
 };
 
 /**
@@ -142,10 +161,11 @@ export const streamMessage = async ({
   type FullChunk = { type: string; payload?: { text?: string; error?: unknown } };
 
   try {
+    const pluginToolNames = toolNamesFromToolsets(toolsets);
     const agent = new Agent({
       id: "relay",
       name: "relay",
-      instructions: composeInstructions(activeTab, skills),
+      instructions: composeInstructions(activeTab, skills, pluginToolNames),
       model,
       ...(tools ? { tools: tools as never } : {})
     });

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { buildProviderGroups, reasoningCapsFor, supportsVision } from "../../shared/agent/providers";
 import type { Attachment, ThinkingOptions } from "../../shared/agent/types";
+import type { PluginSummary } from "../../shared/plugins/types";
 import { Conversation, ConversationContent } from "../components/ai-elements/conversation";
 import { Message, MessageContent } from "../components/ai-elements/message";
 import { Response } from "../components/ai-elements/response";
@@ -37,6 +38,10 @@ interface ChatViewProps {
   skills: SkillsController;
   mode: WorkspaceMode;
   modeLabel: string;
+  /** Chat-eligible plugins (code-only ones are excluded) for the "+" menu toggles. */
+  chatPlugins: PluginSummary[];
+  /** Default active set (connected chat-plugins) when the chat hasn't chosen. */
+  defaultPluginIds: string[];
   /** "+" menu → Skills → Add skill (opens the new-skill form). */
   onAddSkill: () => void;
   /** "+" menu → Skills → Manage skills (opens the skills panel). */
@@ -204,6 +209,8 @@ export const ChatView = ({
   skills,
   mode,
   modeLabel,
+  chatPlugins,
+  defaultPluginIds,
   onAddSkill,
   onManageSkills,
   onOpenPlugins
@@ -413,6 +420,16 @@ export const ChatView = ({
   const runPlusAction = (action: () => void): void => {
     setPlusOpen(false);
     action();
+  };
+
+  // Plugins active in THIS conversation. `null` selection means "use the
+  // connected-chat default"; toggling materialises an explicit set.
+  const effectivePluginIds = chat.activePluginIds ?? defaultPluginIds;
+  const togglePlugin = (id: string): void => {
+    const next = effectivePluginIds.includes(id)
+      ? effectivePluginIds.filter((pid) => pid !== id)
+      : [...effectivePluginIds, id];
+    chat.setActivePluginIds(next);
   };
 
   const submit = (): void => {
@@ -672,10 +689,46 @@ export const ChatView = ({
                 </ul>
               </li>
 
+              <li className="plus-section-label" role="presentation">
+                <Blocks size={13} />
+                <span>Plugins</span>
+                <span className="plus-section-hint">active in this chat</span>
+              </li>
+              {chatPlugins.length === 0 ? (
+                <li role="none">
+                  <button role="menuitem" type="button" onClick={() => runPlusAction(onOpenPlugins)}>
+                    <span className="plus-label plus-label-muted">Connect a plugin…</span>
+                  </button>
+                </li>
+              ) : (
+                chatPlugins.map((plugin) => {
+                  const active = effectivePluginIds.includes(plugin.id);
+                  const connected = plugin.status === "connected";
+                  return (
+                    <li role="none" key={plugin.id}>
+                      <button
+                        role="menuitemcheckbox"
+                        type="button"
+                        aria-checked={active}
+                        className="plus-plugin"
+                        onClick={() => togglePlugin(plugin.id)}
+                      >
+                        <span className={active ? "plus-check on" : "plus-check"}>
+                          {active && <Check size={13} />}
+                        </span>
+                        <span className="plus-label">{plugin.name}</span>
+                        <span
+                          className={connected ? "plus-plugin-dot connected" : "plus-plugin-dot"}
+                          title={connected ? "Connected" : "Not connected"}
+                        />
+                      </button>
+                    </li>
+                  );
+                })
+              )}
               <li role="none">
                 <button role="menuitem" type="button" onClick={() => runPlusAction(onOpenPlugins)}>
-                  <Blocks size={15} />
-                  <span className="plus-label">Add plugins…</span>
+                  <span className="plus-label plus-label-muted">Manage plugins…</span>
                 </button>
               </li>
 

@@ -61,6 +61,8 @@ export interface AgentRequest {
   skills?: Array<{ name: string; instructions: string }>;
   /** Reasoning controls for capable models (Z.AI / GLM). */
   thinking?: ThinkingOptions;
+  /** Plugin ids this conversation activated; only their tools are injected. */
+  activePluginIds?: string[];
 }
 
 /** Streaming events pushed from main -> renderer for a single run. */
@@ -92,6 +94,8 @@ export interface SessionSummary {
 /** A full persisted conversation. */
 export interface ChatSession extends SessionSummary {
   messages: AgentMessage[];
+  /** Plugin ids active in this conversation (chat-scoped). Absent = use default. */
+  activePluginIds?: string[];
 }
 
 /** A provider entry the UI can render and select a model from. */

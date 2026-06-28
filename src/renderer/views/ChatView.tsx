@@ -9,14 +9,13 @@ import {
   FileText,
   FolderPlus,
   Globe,
-  Mic,
   Paperclip,
   Plus,
   ScanSearch,
   Search,
   SendHorizontal,
-  SlidersHorizontal,
   Sparkles,
+  Square,
   X
 } from "lucide-react";
 import { buildProviderGroups, reasoningCapsFor, supportsVision } from "../../shared/agent/providers";
@@ -883,20 +882,25 @@ export const ChatView = ({
               </div>
             )}
           </div>
-          <button className="composer-icon-button" type="button" aria-label="Voice input">
-            <Mic size={16} />
-          </button>
-          <button className="composer-icon-button" type="button" aria-label="Audio settings">
-            <SlidersHorizontal size={16} />
-          </button>
-          <button
-            className="composer-submit"
-            type="submit"
-            aria-label="Submit message"
-            disabled={!hasModel || chat.isStreaming}
-          >
-            <SendHorizontal size={16} />
-          </button>
+          {chat.isStreaming ? (
+            <button
+              className="composer-submit composer-stop"
+              type="button"
+              aria-label="Stop generating"
+              onClick={() => chat.stop()}
+            >
+              <Square size={14} />
+            </button>
+          ) : (
+            <button
+              className="composer-submit"
+              type="submit"
+              aria-label="Submit message"
+              disabled={!hasModel}
+            >
+              <SendHorizontal size={16} />
+            </button>
+          )}
         </div>
       </div>
     </form>

@@ -39,6 +39,9 @@ import type { SkillInput } from "../shared/skills/types";
 const createPluginId = (): string =>
   `plugin_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
+/** Abort controllers for in-flight agent runs, keyed by runId (for the Stop button). */
+const runControllers = new Map<string, AbortController>();
+
 /** Build a full server config from a renderer input (new or existing). */
 const configFromInput = (input: PluginInput): PluginServerConfig => ({
   id: input.id ?? createPluginId(),
@@ -187,6 +190,11 @@ const registerIpc = (): void => {
       };
     });
 
+    // Allow the renderer to interrupt this run (the Stop button) by aborting the
+    // model stream in-flight.
+    const controller = new AbortController();
+    runControllers.set(runId, controller);
+
     void (async () => {
       // Fetch live MCP toolsets for the plugins this conversation activated;
       // failures shouldn't block chat. Empty selection → no toolsets.
@@ -202,15 +210,23 @@ const registerIpc = (): void => {
         tools: toolsEnabled ? nativeTools : undefined,
         thinking: request.thinking,
         skills: request.skills,
+        abortSignal: controller.signal,
         onEvent: (streamEvent) => {
           if (!sender.isDestroyed()) {
             sender.send("agent:event", streamEvent);
           }
         }
       });
+      runControllers.delete(runId);
     })();
 
     return { runId };
+  });
+
+  // Interrupt an in-flight run; the stream emits its partial text as "done".
+  ipcMain.handle("agent:stop", (_event, runId: string) => {
+    runControllers.get(runId)?.abort();
+    runControllers.delete(runId);
   });
 };
 

@@ -69,6 +69,8 @@ export interface StreamArgs {
   thinking?: { enabled: boolean; effort?: string };
   /** Skills referenced this turn; appended to the system instructions. */
   skills?: Array<{ name: string; instructions: string }>;
+  /** Aborts the run when the user hits Stop; partial text is kept. */
+  abortSignal?: AbortSignal;
   onEvent: (event: AgentStreamEvent) => void;
 }
 
@@ -120,6 +122,7 @@ export const streamMessage = async ({
   tools,
   thinking,
   skills,
+  abortSignal,
   onEvent
 }: StreamArgs): Promise<void> => {
   const toolNames = tools ? Object.keys(tools) : [];
@@ -160,6 +163,9 @@ export const streamMessage = async ({
 
   type FullChunk = { type: string; payload?: { text?: string; error?: unknown } };
 
+  // Hoisted so the catch can flush partial text when the run is aborted (Stop).
+  let full = "";
+
   try {
     const pluginToolNames = toolNamesFromToolsets(toolsets);
     const agent = new Agent({
@@ -177,6 +183,10 @@ export const streamMessage = async ({
     const streamOptions: Record<string, unknown> = { maxSteps: 8 };
     if (hasToolsets) {
       streamOptions.toolsets = toolsets;
+    }
+    // Let the Stop button cancel the upstream request, not just our reading.
+    if (abortSignal) {
+      streamOptions.abortSignal = abortSignal;
     }
 
     // Pass reasoning controls as provider options, namespaced by the model's
@@ -198,13 +208,16 @@ export const streamMessage = async ({
     const result = await agent.stream(modelMessages, streamOptions as never);
     armIdle();
 
-    let full = "";
     let firstText = true;
     let reasoningChars = 0;
     const fullStream = (result as { fullStream: AsyncIterable<FullChunk> }).fullStream;
     for await (const chunk of fullStream) {
       armIdle(); // any activity (incl. reasoning) keeps the run alive
       if (settled) {
+        break;
+      }
+      if (abortSignal?.aborted) {
+        // User hit Stop: leave the loop and flush whatever we have as "done".
         break;
       }
       switch (chunk.type) {
@@ -252,7 +265,7 @@ export const streamMessage = async ({
       return;
     }
 
-    if (!full) {
+    if (!full && !abortSignal?.aborted) {
       // No text streamed (e.g. tool-only turn); fall back to the resolved text.
       console.log("[relay] no text streamed; awaiting result.text");
       full = await result.text;
@@ -267,6 +280,16 @@ export const streamMessage = async ({
   } catch (error) {
     if (idleTimer) {
       clearTimeout(idleTimer);
+    }
+    // An abort (Stop button) surfaces here as a thrown AbortError — that's a
+    // clean stop, not a failure: flush the partial text as "done".
+    if (abortSignal?.aborted) {
+      if (!settled) {
+        console.log(`[relay] stream stopped by user chars=${full.length}`);
+        emit({ type: "done", runId, text: full });
+        settled = true;
+      }
+      return;
     }
     console.error("[relay] stream error:", error);
     fail(describeAgentError(error));

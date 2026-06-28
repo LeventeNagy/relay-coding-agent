@@ -45,6 +45,8 @@ export interface SessionsController {
     thinking?: ThinkingOptions,
     attachments?: Attachment[]
   ) => void;
+  /** Interrupt the in-flight run (Stop button); keeps the partial reply. */
+  stop: () => void;
   newSession: () => void;
   openSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -75,11 +77,13 @@ export const useSessions = (
   const modeRef = useRef<WorkspaceMode>(mode);
   const modelRef = useRef<string | null>(model);
   const prevStreamingRef = useRef<string | null>(null);
+  const streamingIdRef = useRef<string | null>(null);
   const activePluginIdsRef = useRef<string[] | null>(null);
   const defaultPluginIdsRef = useRef<string[]>(defaultPluginIds);
   messagesRef.current = messages;
   modeRef.current = mode;
   modelRef.current = model;
+  streamingIdRef.current = streamingId;
   activePluginIdsRef.current = activePluginIds;
   defaultPluginIdsRef.current = defaultPluginIds;
 
@@ -117,6 +121,13 @@ export const useSessions = (
       persistActive(messagesRef.current);
     }
   }, [persistActive]);
+
+  const stop = useCallback(() => {
+    const runId = streamingIdRef.current;
+    if (runId) {
+      void window.agent.stop(runId);
+    }
+  }, []);
 
   const newSession = useCallback(() => {
     activeMetaRef.current = null;
@@ -296,6 +307,7 @@ export const useSessions = (
     activePluginIds,
     setActivePluginIds,
     send,
+    stop,
     newSession,
     openSession,
     deleteSession

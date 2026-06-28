@@ -25,6 +25,10 @@ const agentApi = {
   start(request: AgentRequest): Promise<AgentRunHandle> {
     return ipcRenderer.invoke("agent:start", request);
   },
+  /** Interrupt an in-flight run (the Stop button); keeps any partial text. */
+  stop(runId: string): Promise<void> {
+    return ipcRenderer.invoke("agent:stop", runId);
+  },
   /** Subscribe to stream events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void {
     const handler = (_event: unknown, payload: AgentStreamEvent): void => listener(payload);

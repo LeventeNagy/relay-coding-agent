@@ -1650,6 +1650,22 @@ button {
   background: #3a3932;
 }
 
+.composer-submit:disabled {
+  color: #6f6a60;
+  background: #2a2a24;
+  cursor: default;
+}
+
+/* Stop button shown while the model is streaming (replaces submit). */
+.composer-stop {
+  color: #ffffff;
+  background: var(--orange, #d2691e);
+}
+
+.composer-stop:hover {
+  filter: brightness(1.08);
+}
+
 .model-button {
   display: inline-flex;
   gap: 5px;

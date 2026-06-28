@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  AgentAnswer,
   AgentRequest,
   AgentRunHandle,
   AgentStreamEvent,
@@ -19,7 +20,7 @@ import type {
   PluginSummary
 } from "../shared/plugins/types";
 import type { Skill, SkillInput } from "../shared/skills/types";
-import type { Project } from "../shared/projects/types";
+import type { Project, ProjectFramework, Source } from "../shared/projects/types";
 
 const agentApi = {
   /** Start a streaming run; returns the runId used to tag incoming events. */
@@ -33,6 +34,10 @@ const agentApi = {
   /** Answer a pending human-in-the-loop approval request (code mode). */
   approve(approvalId: string, approved: boolean): Promise<void> {
     return ipcRenderer.invoke("agent:approve", approvalId, approved);
+  },
+  /** Submit answers to a pending clickable-question request (code mode). */
+  answer(requestId: string, answers: AgentAnswer[]): Promise<void> {
+    return ipcRenderer.invoke("agent:answer", requestId, answers);
   },
   /** Subscribe to stream events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void {
@@ -117,8 +122,8 @@ const projectsApi = {
   list(): Promise<Project[]> {
     return ipcRenderer.invoke("projects:list");
   },
-  create(name: string): Promise<Project> {
-    return ipcRenderer.invoke("projects:create", name);
+  create(name: string, framework?: ProjectFramework): Promise<Project> {
+    return ipcRenderer.invoke("projects:create", name, framework);
   },
   /** Open the native folder picker and link the chosen folder (null if cancelled). */
   link(): Promise<Project | null> {
@@ -126,6 +131,21 @@ const projectsApi = {
   },
   remove(id: string): Promise<Project[]> {
     return ipcRenderer.invoke("projects:remove", id);
+  },
+  /** Subscribe to project/source changes (e.g. links auto-captured from chat). */
+  onChanged(listener: () => void): () => void {
+    const handler = (): void => listener();
+    ipcRenderer.on("projects:changed", handler);
+    return () => ipcRenderer.removeListener("projects:changed", handler);
+  },
+  addSource(
+    projectId: string,
+    input: { title?: string; url: string; note?: string; kind?: Source["kind"] }
+  ): Promise<Project[]> {
+    return ipcRenderer.invoke("projects:add-source", projectId, input);
+  },
+  removeSource(projectId: string, srcId: string): Promise<Project[]> {
+    return ipcRenderer.invoke("projects:remove-source", projectId, srcId);
   }
 };
 

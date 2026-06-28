@@ -1,5 +1,6 @@
 import { Agent } from "@mastra/core/agent";
 import type { AgentMessage, AgentStreamEvent, WebMode, WorkspaceMode } from "../shared/agent/types";
+import type { ProjectFramework, Source } from "../shared/projects/types";
 
 const createId = (): string => {
   return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -77,6 +78,10 @@ export interface StreamArgs {
   projectRoot?: string;
   /** Code mode: plan mode (read-only, question-first). */
   planMode?: boolean;
+  /** Code mode: the project's default stack (drives scaffolding + conventions). */
+  framework?: ProjectFramework;
+  /** Code mode: persistent project references injected every run. */
+  sources?: Source[];
   /** Aborts the run when the user hits Stop; partial text is kept. */
   abortSignal?: AbortSignal;
   onEvent: (event: AgentStreamEvent) => void;
@@ -142,23 +147,63 @@ const codingBrief = (projectRoot: string): string =>
   "make focused edits, then **verify** your work by running it (build/lint/tests/`node --check`, " +
   "start a dev server, etc.). Paths are relative to the project root. Keep changes small and " +
   "reviewable, and briefly report what you changed and how you verified it. Some actions may " +
-  "require the user's approval — if one is denied, adapt instead of retrying blindly.";
+  "require the user's approval — if one is denied, adapt instead of retrying blindly.\n" +
+  "When you need a decision or preference (a name, an option, which approach), DON'T guess " +
+  "silently or list '(A)/(B)/(C)' in prose — call the `ask_user` tool so the user picks from " +
+  "clickable options.";
 
 /** Plan-mode brief: read-only, question-first, ends with a proposed plan. */
 const planBrief = (projectRoot: string): string =>
   "\n\n## Plan mode (READ-ONLY)\n" +
   `You are in PLAN MODE for the project at \`${projectRoot}\`. You currently have ONLY read-only ` +
-  "tools (`list_dir`, `read_file`) — you cannot and must not write files or run commands yet.\n" +
+  "tools (`list_dir`, `read_file`, `ask_user`) — you cannot and must not write files or run " +
+  "commands yet.\n" +
   "Your job, before any code is written:\n" +
-  "1. Ask the user a thorough set of detailed clarifying questions about the project — goals and " +
-  "success criteria, target users, tech stack/framework and versions, scope (what's in and out), " +
-  "design/UX direction, data and integrations, constraints, and tricky edge cases. Ask everything " +
-  "you'd need to build it well; don't assume.\n" +
+  "1. Ask the user a thorough set of detailed clarifying questions — goals and success criteria, " +
+  "target users, tech stack/versions, scope (in/out), design/UX direction, data and integrations, " +
+  "constraints, and tricky edge cases. ALWAYS ask via the `ask_user` tool as CLICKABLE options " +
+  "(radio/checkbox) with a recommended default — NEVER list '(A)/(B)/(C)' choices in prose for " +
+  "the user to type. Batch related questions into one `ask_user` call (up to ~4 at a time).\n" +
   "2. Explore the existing files (read-only) to ground your understanding.\n" +
   "3. Once you have enough, present a clear, structured implementation plan: the approach, the " +
   "files you'll create/change, and how you'll verify it.\n" +
   "Do not start building. When the plan is ready, tell the user to turn off Plan mode (the ⊞ menu) " +
   "to start implementing.";
+
+/** Persistent project references injected on every code turn (never forgotten). */
+const sourcesBlock = (sources: Source[]): string => {
+  if (sources.length === 0) {
+    return "";
+  }
+  const lines = sources
+    .map((s) => `- ${s.title} — ${s.url}${s.note ? ` (${s.note})` : ""}`)
+    .join("\n");
+  return (
+    "\n\n## Project sources (always consult these)\n" +
+    "These are the authoritative references for this project. Treat design specs as the source " +
+    "of truth, and `fetch_url` the framework docs for the LATEST APIs and conventions — do not " +
+    "rely on memory, which may be out of date. Re-fetch when unsure.\n" +
+    lines
+  );
+};
+
+/** Next.js + shadcn stack conventions + scaffolding (build mode only). */
+const stackBlock = (framework: ProjectFramework): string => {
+  if (framework !== "nextjs-shadcn") {
+    return "";
+  }
+  return (
+    "\n\n## Stack: Next.js + shadcn/ui\n" +
+    "This project is built with Next.js (App Router, TypeScript, Tailwind CSS) and shadcn/ui. " +
+    "If the folder is not yet a Next.js app (check with `list_dir` — no `package.json`), scaffold " +
+    "it FIRST, non-interactively, with the LATEST tooling:\n" +
+    '`npx create-next-app@latest . --ts --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm --yes`\n' +
+    "then `npx shadcn@latest init -d`. Build all UI from shadcn components " +
+    "(`npx shadcn@latest add <component>`) rather than hand-rolling. Follow current Next.js + " +
+    "shadcn conventions from the docs sources above (fetch them — don't guess). Verify with " +
+    "`npm run build` and `npm run lint`."
+  );
+};
 
 /** Compose mode instructions with referenced skills, plugin tools, web/code mode. */
 const composeInstructions = (
@@ -168,11 +213,20 @@ const composeInstructions = (
   webMode?: WebMode,
   contextSummary?: string,
   projectRoot?: string,
-  planMode?: boolean
+  planMode?: boolean,
+  framework?: ProjectFramework,
+  sources?: Source[]
 ): string => {
   let out = instructionsFor(mode);
   if (mode === "code" && projectRoot) {
     out += planMode ? planBrief(projectRoot) : codingBrief(projectRoot);
+    // Build mode gets the stack/scaffolding directive; both modes get the sources.
+    if (!planMode && framework) {
+      out += stackBlock(framework);
+    }
+    if (sources && sources.length > 0) {
+      out += sourcesBlock(sources);
+    }
   }
   // The model has no clock; without this it anchors "latest/current" to its
   // training cutoff and surfaces stale (e.g. 2024/2025) info as if it were now.
@@ -223,6 +277,8 @@ export const streamMessage = async ({
   contextSummary,
   projectRoot,
   planMode,
+  framework,
+  sources,
   abortSignal,
   onEvent
 }: StreamArgs): Promise<void> => {
@@ -232,7 +288,9 @@ export const streamMessage = async ({
   // any text and can take >60s to first text. We read the *full* stream and reset
   // this timer on EVERY chunk (reasoning, tool-call, text), so it only fires on
   // genuine silence — never mid-thought — and we don't discard a late answer.
-  const IDLE_MS = 120_000;
+  // Code mode runs long commands (installs, builds) with no stream output, so it
+  // needs a much longer silence window than a chat turn.
+  const IDLE_MS = activeTab === "code" ? 360_000 : 120_000;
   let settled = false;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   const emit = (streamEvent: AgentStreamEvent): void => {
@@ -310,7 +368,9 @@ export const streamMessage = async ({
         webMode,
         contextSummary,
         projectRoot,
-        planMode
+        planMode,
+        framework,
+        sources
       ),
       model,
       ...(tools ? { tools: tools as never } : {})
@@ -320,8 +380,10 @@ export const streamMessage = async ({
     const modelMessages = toModelMessages(messages);
 
     // Bound the agentic loop so a misbehaving model can't spin tool calls forever.
-    // Research/search runs need more room for repeated search → read → synthesize.
-    const maxSteps = webMode === "research" ? 18 : webMode === "search" ? 12 : 8;
+    // Code mode builds real apps (scaffold + read docs + write many files + verify),
+    // which is dozens of tool calls — a small budget makes it stop mid-build.
+    const maxSteps =
+      activeTab === "code" ? 100 : webMode === "research" ? 18 : webMode === "search" ? 12 : 8;
     const streamOptions: Record<string, unknown> = { maxSteps };
     if (hasToolsets) {
       streamOptions.toolsets = toolsets;

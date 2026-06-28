@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import type { AccessMode } from "../shared/projects/types";
+import type { AgentAnswer, AgentQuestion } from "../shared/agent/types";
 
 /**
  * Builds the code-mode tool set for a single run, scoped to one project folder.
@@ -28,18 +29,60 @@ export interface CodingContext {
   planMode?: boolean;
   /** Ask the user to approve a risky action; resolves true (allow) / false (deny). */
   requestApproval: (req: ApprovalRequest) => Promise<boolean>;
+  /** Ask the user clickable clarifying questions; resolves with their answers. */
+  requestUserInput: (questions: AgentQuestion[]) => Promise<AgentAnswer[]>;
 }
 
 const execAsync = promisify(exec);
 const MAX_READ_CHARS = 100_000;
 const MAX_OUTPUT_CHARS = 20_000;
-const COMMAND_TIMEOUT_MS = 120_000;
+// Generous: create-next-app + npm install + builds can take minutes.
+const COMMAND_TIMEOUT_MS = 300_000;
 
 const cap = (text: string, max = MAX_OUTPUT_CHARS): string =>
   text.length > max ? `${text.slice(0, max)}\n…[truncated]` : text;
 
 export const buildCodingTools = (ctx: CodingContext): Record<string, unknown> => {
-  const { projectRoot, accessMode, requestApproval } = ctx;
+  const { projectRoot, accessMode, requestApproval, requestUserInput } = ctx;
+
+  const askUser = createTool({
+    id: "ask_user",
+    description:
+      "Ask the user one or more clarifying questions and get their answers. Prefer CLICKABLE " +
+      "options (radio/checkbox) over listing '(A)/(B)/(C)' in prose — the user picks with the " +
+      "mouse. For open-ended answers (e.g. a project NAME, a tagline) OMIT `options` entirely and " +
+      "the user gets a free-text box. Every question also has a free-text 'Other' field. Group " +
+      "related questions into one call (up to ~4); put a recommended default option first.",
+    inputSchema: z.object({
+      questions: z
+        .array(
+          z.object({
+            question: z.string().describe("The question to ask."),
+            header: z.string().optional().describe("Short category label (≤12 chars)."),
+            multiSelect: z.boolean().optional().describe("Allow choosing multiple options."),
+            options: z
+              .array(z.object({ label: z.string(), description: z.string().optional() }))
+              .optional()
+              .describe("Choices for a multiple-choice question; OMIT for a free-text answer.")
+          })
+        )
+        .describe("The questions to present (usually 1-4).")
+    }),
+    outputSchema: z.object({
+      answers: z.array(z.object({ question: z.string(), selected: z.array(z.string()) }))
+    }),
+    execute: async ({ questions }) => {
+      // Normalize so every question has an options array (free-text → []).
+      const normalized: AgentQuestion[] = (questions ?? []).map((q) => ({
+        question: q.question,
+        header: q.header,
+        multiSelect: q.multiSelect,
+        options: q.options ?? []
+      }));
+      const answers = await requestUserInput(normalized);
+      return { answers };
+    }
+  });
 
   /** Resolve a relative path inside the project; block escapes unless Full access. */
   const resolveInRoot = (rel: string): { ok: true; target: string } | { ok: false; error: string } => {
@@ -209,9 +252,9 @@ export const buildCodingTools = (ctx: CodingContext): Record<string, unknown> =>
     }
   });
 
-  // Plan mode: read-only exploration only — the agent cannot change anything.
+  // Plan mode: read-only exploration + ask the user (no writes/edits/commands).
   if (ctx.planMode) {
-    return { list_dir: listDir, read_file: readFileTool };
+    return { list_dir: listDir, read_file: readFileTool, ask_user: askUser };
   }
 
   return {
@@ -219,6 +262,7 @@ export const buildCodingTools = (ctx: CodingContext): Record<string, unknown> =>
     read_file: readFileTool,
     write_file: writeFileTool,
     edit_file: editFileTool,
-    run_command: runCommandTool
+    run_command: runCommandTool,
+    ask_user: askUser
   };
 };

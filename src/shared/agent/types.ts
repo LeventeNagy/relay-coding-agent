@@ -42,6 +42,8 @@ export interface AgentMessage {
   progress?: string[];
   /** An outstanding human-in-the-loop approval request for this run (code mode). */
   pendingApproval?: { approvalId: string; tool: string; summary: string; detail?: string };
+  /** An outstanding set of clickable clarifying questions for this run (code mode). */
+  pendingQuestions?: { requestId: string; questions: AgentQuestion[] };
   createdAt: string;
 }
 
@@ -51,6 +53,23 @@ export interface RawAttachment {
   mimeType: string;
   /** Base64 of the raw file bytes (no data-URL prefix). */
   data: string;
+}
+
+/** A clarifying question the agent asks the user as clickable options (code mode). */
+export interface AgentQuestion {
+  question: string;
+  /** Short label/category chip (optional). */
+  header?: string;
+  /** Allow choosing several options. */
+  multiSelect?: boolean;
+  options: Array<{ label: string; description?: string }>;
+}
+
+/** The user's answer to one AgentQuestion. */
+export interface AgentAnswer {
+  question: string;
+  /** Chosen option labels, plus any free-text "Other" value. */
+  selected: string[];
 }
 
 /** Per-request reasoning controls (currently Z.AI / GLM). */
@@ -93,6 +112,7 @@ export type AgentStreamEvent =
   | { type: "progress"; runId: string; label: string }
   | { type: "context"; runId: string; used: number; window: number; compacted: boolean }
   | { type: "approval"; runId: string; approvalId: string; tool: string; summary: string; detail?: string }
+  | { type: "questions"; runId: string; requestId: string; questions: AgentQuestion[] }
   | { type: "done"; runId: string; text: string }
   | { type: "error"; runId: string; message: string };
 

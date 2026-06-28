@@ -23,7 +23,10 @@ import { PluginsView } from "./views/PluginsView";
 import { SessionSearch } from "./components/SessionSearch";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { availableModels } from "../shared/agent/providers";
+import { SourcesPanel } from "./components/SourcesPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { WorkspaceMode } from "../shared/agent/types";
+import type { ProjectFramework } from "../shared/projects/types";
 
 type AppView = WorkspaceMode | "settings" | "plugins";
 
@@ -55,6 +58,7 @@ export const App = (): ReactElement => {
   const skills = useSkills();
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>("chat");
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [sourcesOpen, setSourcesOpen] = useState(true);
   const [activeView, setActiveView] = useState<AppView>("chat");
   const [sidebarWidth, setSidebarWidth] = useState(320);
   // Which tab the Plugins view opens on, and whether to pop the new-skill form,
@@ -109,8 +113,8 @@ export const App = (): ReactElement => {
     setActiveView("code");
   };
 
-  const createProject = (name: string): void => {
-    void projectsCtl.create(name).then((project) => {
+  const createProject = (name: string, framework: ProjectFramework = "nextjs-shadcn"): void => {
+    void projectsCtl.create(name, framework).then((project) => {
       if (project) {
         newChatInProject(project.id);
       }
@@ -189,10 +193,12 @@ export const App = (): ReactElement => {
   };
 
   const showChat = activeView === "chat" || activeView === "code";
+  const activeProject = projectsCtl.projects.find((p) => p.id === activeProjectId) ?? null;
+  const showSources = activeView === "code" && !!activeProject && sourcesOpen;
 
   return (
     <div className="app-shell" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
-      <div className="app-body">
+      <div className={showSources ? "app-body with-sources" : "app-body"}>
         <aside className="sidebar" aria-label="Session sidebar">
           <div className="sidebar-brand">
             <div>
@@ -323,6 +329,7 @@ export const App = (): ReactElement => {
         </aside>
 
         <main className="preview-canvas" aria-label="Workspace canvas">
+          <ErrorBoundary>
           {showChat && activeView === "code" && !activeProjectId ? (
             <section className="project-gate">
               <FolderGit2 size={40} />
@@ -367,7 +374,25 @@ export const App = (): ReactElement => {
               skillsAutoNew={skillsAutoNew}
             />
           )}
+          {activeView === "code" && activeProject && !sourcesOpen && (
+            <button
+              className="sources-reopen"
+              type="button"
+              aria-label="Show sources"
+              onClick={() => setSourcesOpen(true)}
+            >
+              Sources
+            </button>
+          )}
+          </ErrorBoundary>
         </main>
+        {showSources && activeProject && (
+          <SourcesPanel
+            project={activeProject}
+            onRemove={(srcId) => void projectsCtl.removeSource(activeProject.id, srcId)}
+            onClose={() => setSourcesOpen(false)}
+          />
+        )}
       </div>
       {sessionSearchOpen && (
         <SessionSearch

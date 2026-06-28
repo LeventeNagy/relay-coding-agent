@@ -1,6 +1,6 @@
 import { ReactElement, useState } from "react";
 import { ChevronRight, FolderGit2, FolderPlus, Link2, Plus, Trash2 } from "lucide-react";
-import type { Project } from "../../shared/projects/types";
+import type { Project, ProjectFramework } from "../../shared/projects/types";
 import type { SessionSummary } from "../../shared/agent/types";
 
 interface ProjectsPanelProps {
@@ -13,7 +13,7 @@ interface ProjectsPanelProps {
   onNewChat: (projectId: string) => void;
   onOpenSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
-  onCreateProject: (name: string) => void;
+  onCreateProject: (name: string, framework: ProjectFramework) => void;
   onLinkProject: () => void;
   onRemoveProject: (id: string) => void;
   formatTime: (iso: string) => string;
@@ -36,11 +36,12 @@ export const ProjectsPanel = ({
 }: ProjectsPanelProps): ReactElement => {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [framework, setFramework] = useState<ProjectFramework>("nextjs-shadcn");
 
   const submitCreate = (): void => {
     const trimmed = name.trim();
     if (trimmed) {
-      onCreateProject(trimmed);
+      onCreateProject(trimmed, framework);
     }
     setName("");
     setCreating(false);
@@ -76,6 +77,26 @@ export const ProjectsPanel = ({
               }
             }}
           />
+          <div className="project-template" role="radiogroup" aria-label="Project template">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={framework === "nextjs-shadcn"}
+              className={framework === "nextjs-shadcn" ? "active" : ""}
+              onClick={() => setFramework("nextjs-shadcn")}
+            >
+              Next.js + shadcn
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={framework === "blank"}
+              className={framework === "blank" ? "active" : ""}
+              onClick={() => setFramework("blank")}
+            >
+              Blank
+            </button>
+          </div>
           <div className="project-create-actions">
             <button type="button" className="project-create-go" onClick={submitCreate}>
               <FolderPlus size={14} /> Create

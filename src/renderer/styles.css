@@ -72,6 +72,11 @@ button {
   min-height: 0;
 }
 
+/* Code mode with the Sources panel open: add a third column. */
+.app-body.with-sources {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 300px;
+}
+
 .sidebar {
   position: relative;
   display: grid;
@@ -2099,6 +2104,433 @@ button {
   color: var(--text);
 }
 
+/* Auto-populated Sources under a project in the left sidebar. */
+.project-sources {
+  margin-bottom: 6px;
+}
+
+.project-sources-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.project-sources-hint {
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.source-mini {
+  display: flex;
+  align-items: center;
+}
+
+.source-mini-open {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-mini-open:hover {
+  background: var(--sidebar-strong, #1c1c18);
+  color: var(--text);
+}
+
+.source-mini-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--orange, #d2914a);
+}
+
+.source-mini-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.source-mini-remove {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 5px;
+  color: #6f6a60;
+  background: transparent;
+  cursor: pointer;
+}
+
+.source-mini-remove:hover {
+  color: #e0817d;
+}
+
+/* --- Clickable clarifying questions (code mode) --- */
+.question-form {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent, #6ea8fe);
+  border-radius: 10px;
+  background: var(--panel-soft, #1d1d18);
+}
+
+.question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.question-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.question-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.question-text {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.question-opt:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent, #6ea8fe) 50%, var(--line));
+}
+
+.question-opt.on {
+  border-color: var(--accent, #6ea8fe);
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 12%, transparent);
+}
+
+.question-opt:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.opt-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  color: var(--accent, #6ea8fe);
+}
+
+.opt-box.round {
+  border-radius: 50%;
+}
+
+.question-opt.on .opt-box {
+  border-color: var(--accent, #6ea8fe);
+}
+
+.opt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.opt-label {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.opt-desc {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.question-other {
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.question-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.question-submit {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--accent, #6ea8fe);
+  background: var(--accent, #6ea8fe);
+  color: #0b1220;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.question-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Template chooser in the new-project form. */
+.project-template {
+  display: flex;
+  gap: 6px;
+}
+
+.project-template button {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.project-template button.active {
+  border-color: var(--orange, #d2914a);
+  color: var(--text);
+  background: color-mix(in srgb, var(--orange, #d2914a) 12%, transparent);
+}
+
+/* --- Sources right panel (code mode) --- */
+.sources-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--sidebar, #15150f);
+}
+
+.sources-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 8px;
+  color: #d2cbbc;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sources-head button {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 6px;
+  color: #9c958b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sources-head button:hover {
+  color: var(--text);
+  background: var(--sidebar-strong, #1c1c18);
+}
+
+.sources-hint {
+  margin: 0;
+  padding: 0 14px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.sources-add {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.sources-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.sources-add button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--body);
+  cursor: pointer;
+}
+
+.sources-add button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 14px;
+  overflow-y: auto;
+}
+
+.sources-empty {
+  padding: 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-row {
+  display: flex;
+  align-items: center;
+}
+
+.source-open {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-open:hover {
+  background: var(--sidebar-strong, #1c1c18);
+}
+
+.source-icon {
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--orange, #d2914a);
+}
+
+.source-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.source-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-tag {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.source-note {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-remove {
+  display: inline-flex;
+  padding: 5px;
+  border-radius: 6px;
+  color: #79736a;
+  background: transparent;
+  cursor: pointer;
+}
+
+.source-remove:hover {
+  color: #e0817d;
+}
+
+/* Floating button to reopen the Sources panel when collapsed. */
+.sources-reopen {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--body);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sources-reopen:hover {
+  border-color: var(--orange, #d2914a);
+  color: var(--text);
+}
+
 /* --- Project gate (code mode, no project selected) --- */
 .project-gate {
   display: flex;
@@ -2432,6 +2864,11 @@ button {
   padding: 32px;
   overflow: auto;
   background: #1a1411;
+}
+
+.crash-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .crash-card {

@@ -36,12 +36,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       <div className="crash-screen" role="alert">
         <div className="crash-card">
           <h2>Relay hit a render error</h2>
+          <p>Your conversation is safe — try again, or reload.</p>
           <p>{error.message || String(error)}</p>
           {error.stack && <pre>{error.stack}</pre>}
           {info && <pre className="crash-component-stack">{info}</pre>}
-          <button type="button" onClick={() => window.location.reload()}>
-            Reload
-          </button>
+          <div className="crash-actions">
+            <button type="button" onClick={() => this.setState({ error: null, info: null })}>
+              Try again
+            </button>
+            <button type="button" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
         </div>
       </div>
     );

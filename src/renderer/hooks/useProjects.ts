@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Project } from "../../shared/projects/types";
+import type { Project, ProjectFramework, Source } from "../../shared/projects/types";
 
 export interface ProjectsController {
   projects: Project[];
   ready: boolean;
-  /** Create a new project folder under Documents/Relay. */
-  create: (name: string) => Promise<Project | null>;
+  /** Create a new project folder under Documents/Relay (default Next.js+shadcn). */
+  create: (name: string, framework?: ProjectFramework) => Promise<Project | null>;
   /** Open the native picker and link an existing folder. */
   link: () => Promise<Project | null>;
   remove: (id: string) => Promise<void>;
+  addSource: (
+    projectId: string,
+    input: { title?: string; url: string; note?: string; kind?: Source["kind"] }
+  ) => Promise<void>;
+  removeSource: (projectId: string, srcId: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -42,15 +47,45 @@ export const useProjects = (): ProjectsController => {
     };
   }, []);
 
-  const create = useCallback(async (name: string): Promise<Project | null> => {
+  // Refresh when main captures links from chat into a project's sources.
+  useEffect(() => window.projects.onChanged(() => void refresh()), [refresh]);
+
+  const create = useCallback(
+    async (name: string, framework?: ProjectFramework): Promise<Project | null> => {
+      try {
+        const project = await window.projects.create(name, framework);
+        setProjects(await window.projects.list());
+        return project;
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("projects.create failed:", error);
+        return null;
+      }
+    },
+    []
+  );
+
+  const addSource = useCallback(
+    async (
+      projectId: string,
+      input: { title?: string; url: string; note?: string; kind?: Source["kind"] }
+    ): Promise<void> => {
+      try {
+        setProjects(await window.projects.addSource(projectId, input));
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("projects.addSource failed:", error);
+      }
+    },
+    []
+  );
+
+  const removeSource = useCallback(async (projectId: string, srcId: string): Promise<void> => {
     try {
-      const project = await window.projects.create(name);
-      setProjects(await window.projects.list());
-      return project;
+      setProjects(await window.projects.removeSource(projectId, srcId));
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error("projects.create failed:", error);
-      return null;
+      console.error("projects.removeSource failed:", error);
     }
   }, []);
 
@@ -77,5 +112,5 @@ export const useProjects = (): ProjectsController => {
     }
   }, []);
 
-  return { projects, ready, create, link, remove, refresh };
+  return { projects, ready, create, link, remove, addSource, removeSource, refresh };
 };

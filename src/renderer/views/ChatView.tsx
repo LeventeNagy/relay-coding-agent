@@ -25,6 +25,7 @@ import { contextWindowFor } from "../../shared/agent/contextWindows";
 import { estimateConversationTokens } from "../../shared/agent/tokens";
 import type { AccessMode, Attachment, ThinkingOptions, WebMode } from "../../shared/agent/types";
 import type { PluginSummary } from "../../shared/plugins/types";
+import { QuestionForm } from "../components/QuestionForm";
 import { Conversation, ConversationContent } from "../components/ai-elements/conversation";
 import { Message, MessageContent } from "../components/ai-elements/message";
 import { Response } from "../components/ai-elements/response";
@@ -1126,10 +1127,17 @@ export const ChatView = ({
                   : chat.isStreaming
                     ? message.reasoning || (message.progress && message.progress.length > 0)
                       ? null
-                      : message.pendingApproval
+                      : message.pendingApproval || message.pendingQuestions
                         ? null
                         : <ThinkingIndicator />
                     : ""}
+                {message.pendingQuestions && (
+                  <QuestionForm
+                    requestId={message.pendingQuestions.requestId}
+                    questions={message.pendingQuestions.questions}
+                    onSubmit={(requestId, answers) => chat.answer(requestId, answers)}
+                  />
+                )}
                 {message.pendingApproval && (
                   <div className="approval-prompt">
                     <div className="approval-head">

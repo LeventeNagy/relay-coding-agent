@@ -26,11 +26,13 @@ import { pluginCatalog } from "../shared/plugins/catalog";
 import { logProviderMappingCheck } from "./providerCheck";
 import { deleteSkill, listSkills, saveSkill } from "./skillStore";
 import {
+  addSource,
   createProject,
   getProject,
   linkProject,
   listProjects,
   removeProject,
+  removeSource,
   touchProject
 } from "./projectStore";
 import { nativeTools } from "./nativeTools";
@@ -39,7 +41,9 @@ import { prepareHistory } from "./contextManager";
 import { clearCompaction } from "./contextStore";
 import { ingest as ingestAttachments, readBase64, read as readAttachment } from "./attachmentStore";
 import type {
+  AgentAnswer,
   AgentMessage,
+  AgentQuestion,
   AgentRequest,
   AgentRunHandle,
   AgentStreamEvent,
@@ -48,6 +52,7 @@ import type {
   WorkspaceMode
 } from "../shared/agent/types";
 import type { PluginInput, PluginServerConfig } from "../shared/plugins/types";
+import type { ProjectFramework, Source } from "../shared/projects/types";
 import type { SkillInput } from "../shared/skills/types";
 
 const createPluginId = (): string =>
@@ -59,7 +64,10 @@ const runControllers = new Map<string, AbortController>();
 /** Parked human-in-the-loop approval requests, keyed by approvalId. */
 const pendingApprovals = new Map<string, { runId: string; resolve: (ok: boolean) => void }>();
 
-/** Resolve every pending approval for a run as denied (on Stop / window close). */
+/** Parked clickable-question requests, keyed by requestId. */
+const pendingInputs = new Map<string, { runId: string; resolve: (answers: AgentAnswer[]) => void }>();
+
+/** Resolve every pending approval/input for a run (on Stop / window close). */
 const denyRunApprovals = (runId: string): void => {
   for (const [id, entry] of pendingApprovals) {
     if (entry.runId === runId) {
@@ -67,6 +75,27 @@ const denyRunApprovals = (runId: string): void => {
       pendingApprovals.delete(id);
     }
   }
+  for (const [id, entry] of pendingInputs) {
+    if (entry.runId === runId) {
+      entry.resolve([]);
+      pendingInputs.delete(id);
+    }
+  }
+};
+
+/** Tell open windows the project list/sources changed (after auto-detecting links). */
+const broadcastProjects = (): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send("projects:changed");
+    }
+  }
+};
+
+/** Extract http(s) URLs from a message, trimming trailing punctuation. */
+const extractUrls = (text: string): string[] => {
+  const matches = text.match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
+  return [...new Set(matches.map((u) => u.replace(/[.,;:!?]+$/, "")))];
 };
 
 /** Build a full server config from a renderer input (new or existing). */
@@ -196,7 +225,20 @@ const registerIpc = (): void => {
 
   // --- Projects (code-mode folders) ---
   ipcMain.handle("projects:list", () => listProjects());
-  ipcMain.handle("projects:create", (_event, name: string) => createProject(name));
+  ipcMain.handle("projects:create", (_event, name: string, framework?: ProjectFramework) =>
+    createProject(name, framework)
+  );
+  ipcMain.handle(
+    "projects:add-source",
+    (_event, projectId: string, input: { title?: string; url: string; note?: string; kind?: Source["kind"] }) => {
+      addSource(projectId, input);
+      return listProjects();
+    }
+  );
+  ipcMain.handle("projects:remove-source", (_event, projectId: string, srcId: string) => {
+    removeSource(projectId, srcId);
+    return listProjects();
+  });
   ipcMain.handle("projects:link", async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
     const result = await dialog.showOpenDialog(win as BrowserWindow, {
@@ -273,14 +315,42 @@ const registerIpc = (): void => {
         emit({ type: "approval", runId, approvalId, tool: req.tool, summary: req.summary, detail: req.detail });
       });
 
+    // Clickable clarifying questions: present them in the UI and await answers.
+    const requestUserInput = (questions: AgentQuestion[]): Promise<AgentAnswer[]> =>
+      new Promise<AgentAnswer[]>((resolve) => {
+        if (controller.signal.aborted || sender.isDestroyed()) {
+          resolve([]);
+          return;
+        }
+        const requestId = `ask_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        pendingInputs.set(requestId, { runId, resolve });
+        emit({ type: "questions", runId, requestId, questions });
+      });
+
     // Assemble tools: chat → native tools only; code → native + filesystem/command
     // tools scoped to the session's project folder.
     let tools = toolsEnabled ? { ...nativeTools } : undefined;
     let projectRoot: string | undefined;
+    let projectFramework: ProjectFramework | undefined;
+    let projectSources: Source[] | undefined;
     if (toolsEnabled && request.activeTab === "code" && request.projectId) {
-      const project = getProject(request.projectId);
+      let project = getProject(request.projectId);
       if (project) {
+        // Auto-capture any links the user put in their latest message as sources,
+        // so they're remembered and injected from now on (no manual paste needed).
+        const lastUser = [...request.messages].reverse().find((m) => m.role === "user");
+        const existing = new Set(project.sources.map((s) => s.url));
+        const newUrls = extractUrls(lastUser?.content ?? "").filter((u) => !existing.has(u));
+        if (newUrls.length > 0) {
+          for (const url of newUrls) {
+            addSource(project.id, { url });
+          }
+          project = getProject(request.projectId) ?? project;
+          broadcastProjects();
+        }
         projectRoot = project.root;
+        projectFramework = project.framework;
+        projectSources = project.sources;
         touchProject(project.id);
         tools = {
           ...nativeTools,
@@ -288,7 +358,8 @@ const registerIpc = (): void => {
             projectRoot,
             accessMode: request.accessMode ?? "ask",
             planMode: request.planMode,
-            requestApproval
+            requestApproval,
+            requestUserInput
           })
         };
       }
@@ -331,6 +402,8 @@ const registerIpc = (): void => {
         toolsets,
         tools,
         projectRoot,
+        framework: projectFramework,
+        sources: projectSources,
         planMode: request.planMode,
         thinking: request.thinking,
         skills: request.skills,
@@ -358,6 +431,15 @@ const registerIpc = (): void => {
     if (entry) {
       pendingApprovals.delete(approvalId);
       entry.resolve(approved);
+    }
+  });
+
+  // Submit answers to a parked clickable-question request.
+  ipcMain.handle("agent:answer", (_event, requestId: string, answers: AgentAnswer[]) => {
+    const entry = pendingInputs.get(requestId);
+    if (entry) {
+      pendingInputs.delete(requestId);
+      entry.resolve(answers);
     }
   });
 };

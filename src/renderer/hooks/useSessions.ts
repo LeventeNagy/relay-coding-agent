@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AccessMode,
+  AgentAnswer,
   AgentMessage,
   Attachment,
   ChatSession,
@@ -55,6 +56,8 @@ export interface SessionsController {
   stop: () => void;
   /** Answer a pending code-mode approval request, then clear the prompt. */
   approve: (approvalId: string, approved: boolean) => void;
+  /** Submit answers to a pending clickable-question request, then clear it. */
+  answer: (requestId: string, answers: AgentAnswer[]) => void;
   /** Last run's context usage (server truth) for the meter; null until a run reports. */
   contextInfo: { used: number; window: number; compacted: boolean } | null;
   newSession: () => void;
@@ -118,7 +121,13 @@ export const useSessions = (
       mode: modeRef.current,
       model: meta.model ?? modelRef.current,
       projectId: meta.projectId,
-      messages: messagesToSave,
+      // Drop transient prompt state so a reload never re-shows a dead approval/
+      // question form, and so the in-progress turn is safely saved.
+      messages: messagesToSave.map((m) =>
+        m.pendingApproval || m.pendingQuestions
+          ? { ...m, pendingApproval: undefined, pendingQuestions: undefined }
+          : m
+      ),
       // Persist the concrete set this conversation used (resolves the default).
       activePluginIds: resolvedPluginIds(),
       createdAt: meta.createdAt,
@@ -154,6 +163,17 @@ export const useSessions = (
       current.map((message) =>
         message.pendingApproval?.approvalId === approvalId
           ? { ...message, pendingApproval: undefined }
+          : message
+      )
+    );
+  }, []);
+
+  const answer = useCallback((requestId: string, answers: AgentAnswer[]) => {
+    void window.agent.answer(requestId, answers);
+    setMessages((current) =>
+      current.map((message) =>
+        message.pendingQuestions?.requestId === requestId
+          ? { ...message, pendingQuestions: undefined }
           : message
       )
     );
@@ -222,20 +242,37 @@ export const useSessions = (
         );
         return;
       }
+      if (event.type === "questions") {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === event.runId
+              ? { ...message, pendingQuestions: { requestId: event.requestId, questions: event.questions } }
+              : message
+          )
+        );
+        return;
+      }
       if (event.type === "error") {
         setMessages((current) =>
           current.map((message) =>
             message.id === event.runId
-              ? { ...message, content: message.content || `⚠️ ${event.message}`, pendingApproval: undefined }
+              ? {
+                  ...message,
+                  content: message.content || `⚠️ ${event.message}`,
+                  pendingApproval: undefined,
+                  pendingQuestions: undefined
+                }
               : message
           )
         );
       }
       if (event.type === "done") {
-        // Clear any leftover approval prompt when the run ends.
+        // Clear any leftover approval/question prompt when the run ends.
         setMessages((current) =>
           current.map((message) =>
-            message.id === event.runId ? { ...message, pendingApproval: undefined } : message
+            message.id === event.runId
+              ? { ...message, pendingApproval: undefined, pendingQuestions: undefined }
+              : message
           )
         );
       }
@@ -319,11 +356,13 @@ export const useSessions = (
         };
         activeMetaRef.current = meta;
         setActiveSessionId(meta.id);
-        persistActive(nextMessages);
       }
 
       setMessages(nextMessages);
       setStreamingId(runId);
+      // Persist the user's turn immediately (every turn), so a crash or reload
+      // mid-run never loses the conversation.
+      persistActive(nextMessages);
       void window.agent.start({
         runId,
         sessionId: activeMetaRef.current?.id,
@@ -402,6 +441,7 @@ export const useSessions = (
     send,
     stop,
     approve,
+    answer,
     newSession,
     openSession,
     deleteSession

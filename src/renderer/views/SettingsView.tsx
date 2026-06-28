@@ -1,11 +1,31 @@
 import { ReactElement, useMemo, useState } from "react";
-import { Check, Eye, EyeOff, Search, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Eye, EyeOff, Globe, Search, Trash2 } from "lucide-react";
 import { credentialList } from "../../shared/agent/providers";
 import type { SettingsController } from "../hooks/useSettings";
 
 interface SettingsViewProps {
   settings: SettingsController;
 }
+
+/**
+ * Optional search-provider keys. Web search works keyless (DuckDuckGo); adding
+ * one of these upgrades quality. Stored in the same encrypted key store as model
+ * keys (applyKeysToEnv exposes them to the web_search tool via process.env).
+ */
+const SEARCH_KEYS = [
+  {
+    variable: "TAVILY_API_KEY",
+    name: "Tavily",
+    note: "AI-research-grade search — returns page content and a draft answer. Free tier ~1000/mo.",
+    url: "https://app.tavily.com/"
+  },
+  {
+    variable: "BRAVE_API_KEY",
+    name: "Brave Search",
+    note: "General web search, privacy-friendly. Free tier ~2000/mo.",
+    url: "https://api-dashboard.search.brave.com/app/keys"
+  }
+] as const;
 
 export const SettingsView = ({ settings }: SettingsViewProps): ReactElement => {
   const { state, setKey, deleteKey } = settings;
@@ -46,6 +66,89 @@ export const SettingsView = ({ settings }: SettingsViewProps): ReactElement => {
             : "OS keychain unavailable — keys are stored locally without encryption on this machine."}
         </span>
       </header>
+
+      <section className="search-keys" aria-label="Web search">
+        <div className="search-keys-head">
+          <Globe size={15} />
+          <div>
+            <h3>Web search</h3>
+            <p>
+              Web search &amp; research work with no key (DuckDuckGo). Add a key below for
+              higher-quality results and deeper research.
+            </p>
+          </div>
+        </div>
+        <div className="search-keys-grid">
+          {SEARCH_KEYS.map((entry) => {
+            const isConfigured = state.configuredKeys.includes(entry.variable);
+            const isVisible = visibleKeys[entry.variable] ?? false;
+            const draft = drafts[entry.variable] ?? "";
+            return (
+              <article className="provider-card" key={entry.variable}>
+                <div className="provider-card-header">
+                  <div className="provider-card-title">
+                    <h3>{entry.name}</h3>
+                    {isConfigured && (
+                      <span className="provider-status">
+                        <Check size={11} /> Connected
+                      </span>
+                    )}
+                  </div>
+                  <p>{entry.note}</p>
+                  <button
+                    type="button"
+                    className="search-getkey"
+                    onClick={() => void window.plugins.openExternal(entry.url)}
+                  >
+                    Get your key
+                    <ExternalLink size={12} />
+                  </button>
+                </div>
+                <label>
+                  <span>{entry.variable}</span>
+                  <div className="key-input-row">
+                    <input
+                      type={isVisible ? "text" : "password"}
+                      value={draft}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setDrafts((current) => ({ ...current, [entry.variable]: value }));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          saveKey(entry.variable);
+                        }
+                      }}
+                      onBlur={() => saveKey(entry.variable)}
+                      placeholder={isConfigured ? "•••••••• stored — paste to replace" : "Paste API key (optional)"}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      aria-label={isVisible ? `Hide ${entry.name} key` : `Show ${entry.name} key`}
+                      onClick={() =>
+                        setVisibleKeys((current) => ({ ...current, [entry.variable]: !isVisible }))
+                      }
+                    >
+                      {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  {isConfigured && (
+                    <button
+                      type="button"
+                      className="provider-remove"
+                      onClick={() => void deleteKey(entry.variable)}
+                    >
+                      <Trash2 size={12} /> Remove key
+                    </button>
+                  )}
+                </label>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
       <label className="provider-search">
         <Search size={14} />

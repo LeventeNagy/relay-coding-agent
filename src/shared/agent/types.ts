@@ -2,6 +2,9 @@ export type AgentRole = "user" | "assistant" | "system";
 
 export type WorkspaceMode = "chat" | "code";
 
+/** Web augmentation for a single turn: a quick search, or a deep research run. */
+export type WebMode = "search" | "research";
+
 /**
  * A file the user attached to a message. Images are stored on disk under
  * userData and referenced by `id` (read back via `attachments:read`); documents
@@ -31,6 +34,8 @@ export interface AgentMessage {
   attachments?: Attachment[];
   /** Streamed reasoning ("thinking") text, when the model emits it. */
   reasoning?: string;
+  /** Live web/research progress lines ("Searching…", "Reading…") for this turn. */
+  progress?: string[];
   createdAt: string;
 }
 
@@ -63,12 +68,15 @@ export interface AgentRequest {
   thinking?: ThinkingOptions;
   /** Plugin ids this conversation activated; only their tools are injected. */
   activePluginIds?: string[];
+  /** Web augmentation for this turn: quick search or deep research. */
+  webMode?: WebMode;
 }
 
 /** Streaming events pushed from main -> renderer for a single run. */
 export type AgentStreamEvent =
   | { type: "delta"; runId: string; text: string }
   | { type: "reasoning"; runId: string; text: string }
+  | { type: "progress"; runId: string; label: string }
   | { type: "done"; runId: string; text: string }
   | { type: "error"; runId: string; message: string };
 

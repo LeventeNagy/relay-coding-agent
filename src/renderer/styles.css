@@ -870,6 +870,64 @@ button {
   min-width: 0;
 }
 
+/* Optional web-search provider keys (above the model-provider grid). */
+.search-keys {
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.search-keys-head {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.search-keys-head svg {
+  margin-top: 2px;
+  color: var(--accent, #6ea8fe);
+  flex: 0 0 auto;
+}
+
+.search-keys-head h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.search-keys-head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.search-keys-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.search-getkey {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--body);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.search-getkey:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
 .provider-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.58fr);
@@ -1137,6 +1195,50 @@ button {
   margin: 0;
   font-size: 12px;
   color: var(--orange);
+}
+
+/* One-shot Web search / Research mode chip above the composer. */
+.composer-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 6px 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 14%, transparent);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.composer-mode-chip svg {
+  color: var(--accent, #6ea8fe);
+}
+
+.composer-mode-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.composer-mode-chip button:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
+/* Per-step lines inside the research progress panel. */
+.research-step {
+  padding: 2px 0;
+}
+
+.research-step + .research-step {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 /* Attachments rendered inside a sent message bubble. */

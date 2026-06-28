@@ -5,6 +5,7 @@ import type {
   ChatSession,
   SessionSummary,
   ThinkingOptions,
+  WebMode,
   WorkspaceMode
 } from "../../shared/agent/types";
 import type { SkillRef } from "../../shared/skills/types";
@@ -43,7 +44,8 @@ export interface SessionsController {
     text: string,
     skills?: SkillRef[],
     thinking?: ThinkingOptions,
-    attachments?: Attachment[]
+    attachments?: Attachment[],
+    webMode?: WebMode
   ) => void;
   /** Interrupt the in-flight run (Stop button); keeps the partial reply. */
   stop: () => void;
@@ -159,6 +161,16 @@ export const useSessions = (
         );
         return;
       }
+      if (event.type === "progress") {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === event.runId
+              ? { ...message, progress: [...(message.progress ?? []), event.label] }
+              : message
+          )
+        );
+        return;
+      }
       if (event.type === "error") {
         setMessages((current) =>
           current.map((message) =>
@@ -203,7 +215,13 @@ export const useSessions = (
   }, [mode, newSession]);
 
   const send = useCallback(
-    (text: string, skills?: SkillRef[], thinking?: ThinkingOptions, attachments?: Attachment[]) => {
+    (
+      text: string,
+      skills?: SkillRef[],
+      thinking?: ThinkingOptions,
+      attachments?: Attachment[],
+      webMode?: WebMode
+    ) => {
       const trimmed = text.trim();
       const hasAttachments = Boolean(attachments && attachments.length > 0);
       if ((!trimmed && !hasAttachments) || !model || streamingId) {
@@ -246,7 +264,8 @@ export const useSessions = (
         activeTab: mode,
         skills: skills && skills.length > 0 ? skills : undefined,
         thinking,
-        activePluginIds: resolvedPluginIds()
+        activePluginIds: resolvedPluginIds(),
+        webMode
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

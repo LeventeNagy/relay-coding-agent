@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { listSkills, saveSkill } from "./skillStore";
+import { searchWeb } from "./webSearch";
 import type { WorkspaceMode } from "../shared/agent/types";
 
 /**
@@ -41,6 +42,39 @@ const fetchUrl = createTool({
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
+  }
+});
+
+const webSearch = createTool({
+  id: "web_search",
+  description:
+    "Search the web for current, factual, or recent information. Returns ranked results " +
+    "(title, url, snippet — and extracted content when available). Use this whenever the " +
+    "answer depends on up-to-date or external facts, then call fetch_url on the most " +
+    "relevant result to read it in full. Always cite the sources you used.",
+  inputSchema: z.object({
+    query: z.string().min(1).describe("The search query."),
+    depth: z
+      .enum(["basic", "advanced"])
+      .optional()
+      .describe("'advanced' for deeper research (more results + page content); defaults to 'basic'.")
+  }),
+  outputSchema: z.object({
+    provider: z.string(),
+    answer: z.string().optional(),
+    results: z.array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        snippet: z.string(),
+        content: z.string().optional()
+      })
+    ),
+    error: z.string().optional()
+  }),
+  execute: async ({ query, depth }) => {
+    const { results, answer, provider, error } = await searchWeb(query, { depth });
+    return { provider, answer, results, error };
   }
 });
 
@@ -95,5 +129,6 @@ const installSkill = createTool({
 
 export const nativeTools = {
   fetch_url: fetchUrl,
+  web_search: webSearch,
   install_skill: installSkill
 };

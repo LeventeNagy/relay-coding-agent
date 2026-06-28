@@ -210,6 +210,7 @@ const registerIpc = (): void => {
         tools: toolsEnabled ? nativeTools : undefined,
         thinking: request.thinking,
         skills: request.skills,
+        webMode: request.webMode,
         abortSignal: controller.signal,
         onEvent: (streamEvent) => {
           if (!sender.isDestroyed()) {

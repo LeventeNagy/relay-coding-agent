@@ -19,7 +19,7 @@ import {
   X
 } from "lucide-react";
 import { buildProviderGroups, reasoningCapsFor, supportsVision } from "../../shared/agent/providers";
-import type { Attachment, ThinkingOptions } from "../../shared/agent/types";
+import type { Attachment, ThinkingOptions, WebMode } from "../../shared/agent/types";
 import type { PluginSummary } from "../../shared/plugins/types";
 import { Conversation, ConversationContent } from "../components/ai-elements/conversation";
 import { Message, MessageContent } from "../components/ai-elements/message";
@@ -225,6 +225,8 @@ export const ChatView = ({
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
+  // One-shot web augmentation for the next message (cleared after send).
+  const [webMode, setWebMode] = useState<WebMode | null>(null);
 
   // Close the "+" menu on outside click or Escape.
   useEffect(() => {
@@ -443,8 +445,9 @@ export const ChatView = ({
     }
     const refs = resolveSkillRefs(text, skillList);
 
+    const mode = webMode ?? undefined;
     const dispatch = (attachments?: Attachment[]): void => {
-      chat.send(text, refs, thinkingPayload, attachments);
+      chat.send(text, refs, thinkingPayload, attachments, mode);
     };
 
     if (staged.length > 0) {
@@ -462,6 +465,7 @@ export const ChatView = ({
 
     composer.value = "";
     setPending([]);
+    setWebMode(null);
     setSlashOpen(false);
     growComposer();
     renderHighlight();
@@ -538,6 +542,15 @@ export const ChatView = ({
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {webMode && (
+        <div className="composer-mode-chip">
+          {webMode === "research" ? <ScanSearch size={13} /> : <Globe size={13} />}
+          <span>{webMode === "research" ? "Research" : "Web search"}</span>
+          <button type="button" aria-label="Clear web mode" onClick={() => setWebMode(null)}>
+            <X size={12} />
+          </button>
         </div>
       )}
       {visionWarning && (
@@ -734,17 +747,27 @@ export const ChatView = ({
               <li className="plus-divider" role="separator" />
 
               <li role="none">
-                <button role="menuitem" type="button" disabled>
-                  <ScanSearch size={15} />
-                  <span className="plus-label">Research</span>
-                  <span className="plus-soon">Soon</span>
+                <button
+                  role="menuitemcheckbox"
+                  type="button"
+                  aria-checked={webMode === "search"}
+                  onClick={() => runPlusAction(() => setWebMode((m) => (m === "search" ? null : "search")))}
+                >
+                  <Globe size={15} />
+                  <span className="plus-label">Web search</span>
+                  {webMode === "search" && <Check size={14} />}
                 </button>
               </li>
               <li role="none">
-                <button role="menuitem" type="button" disabled>
-                  <Globe size={15} />
-                  <span className="plus-label">Web search</span>
-                  <span className="plus-soon">Soon</span>
+                <button
+                  role="menuitemcheckbox"
+                  type="button"
+                  aria-checked={webMode === "research"}
+                  onClick={() => runPlusAction(() => setWebMode((m) => (m === "research" ? null : "research")))}
+                >
+                  <ScanSearch size={15} />
+                  <span className="plus-label">Research</span>
+                  {webMode === "research" && <Check size={14} />}
                 </button>
               </li>
             </ul>
@@ -925,6 +948,23 @@ export const ChatView = ({
                 {message.attachments && message.attachments.length > 0 && (
                   <MessageAttachments attachments={message.attachments} />
                 )}
+                {message.progress && message.progress.length > 0 && (
+                  <details className="reasoning-panel research-progress" open={!message.content}>
+                    <summary>
+                      <ChevronRight size={13} className="reasoning-caret" />
+                      <ScanSearch size={13} />
+                      Researched the web · {message.progress.length} step
+                      {message.progress.length === 1 ? "" : "s"}
+                    </summary>
+                    <div className="reasoning-text">
+                      {message.progress.map((line, index) => (
+                        <div key={index} className="research-step">
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
                 {message.reasoning && (
                   <details className="reasoning-panel" open={!message.content}>
                     <summary>
@@ -940,7 +980,7 @@ export const ChatView = ({
                     ? <Response>{message.content}</Response>
                     : message.content
                   : chat.isStreaming
-                    ? message.reasoning
+                    ? message.reasoning || (message.progress && message.progress.length > 0)
                       ? null
                       : <ThinkingIndicator />
                     : ""}

@@ -1,5 +1,5 @@
 import { Agent } from "@mastra/core/agent";
-import type { AgentMessage, AgentStreamEvent, WorkspaceMode } from "../shared/agent/types";
+import type { AgentMessage, AgentStreamEvent, WebMode, WorkspaceMode } from "../shared/agent/types";
 
 const createId = (): string => {
   return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -69,6 +69,8 @@ export interface StreamArgs {
   thinking?: { enabled: boolean; effort?: string };
   /** Skills referenced this turn; appended to the system instructions. */
   skills?: Array<{ name: string; instructions: string }>;
+  /** Web augmentation for this turn: quick search or deep research. */
+  webMode?: WebMode;
   /** Aborts the run when the user hits Stop; partial text is kept. */
   abortSignal?: AbortSignal;
   onEvent: (event: AgentStreamEvent) => void;
@@ -84,13 +86,58 @@ const toolNamesFromToolsets = (
   return Object.values(toolsets).flatMap((tools) => Object.keys(tools));
 };
 
-/** Compose mode instructions with referenced skills and any connected plugin tools. */
+/** Human-readable current date, so the model anchors "latest/now" to the present. */
+const currentDateString = (): string =>
+  new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+
+/** Web-augmentation brief appended to the system prompt for search/research runs. */
+const webModeBrief = (webMode: WebMode): string => {
+  const recency =
+    `Today is ${currentDateString()}. Treat this as the present. Prioritize the most ` +
+    "recent information: when freshness matters, put the CURRENT year in your search queries " +
+    "(not an older year from memory), prefer sources from the last several months, and never " +
+    "present older data as if it were current. If sources conflict on recency, trust the newest.";
+  if (webMode === "research") {
+    return (
+      "\n\n## Research mode\n" +
+      `${recency}\n\n` +
+      "The user wants a thorough, well-researched answer. Work like a research analyst:\n" +
+      "1. Break the question into sub-topics.\n" +
+      "2. Use `web_search` several times with varied, specific queries (use depth 'advanced').\n" +
+      "3. Open the most relevant results with `fetch_url` and read them; cross-check claims " +
+      "across multiple independent sources.\n" +
+      "4. Then write a clear, well-structured report (headings, lists where useful) that " +
+      "synthesizes the findings — not a list of links.\n" +
+      "Cite sources inline as [1], [2]… and end with a `## Sources` section listing each as " +
+      "a `[Title](url)` markdown link. Prefer primary/authoritative sources and note any " +
+      "disagreement or uncertainty."
+    );
+  }
+  return (
+    "\n\n## Web search mode\n" +
+    `${recency}\n\n` +
+    "Answer using current information from the web. Use `web_search` (and `fetch_url` to read " +
+    "the best result when the snippet isn't enough), then give a concise, direct answer. Cite " +
+    "sources inline as [1], [2]… and end with a short `## Sources` list of `[Title](url)` links."
+  );
+};
+
+/** Compose mode instructions with referenced skills, plugin tools, and web mode. */
 const composeInstructions = (
   mode: WorkspaceMode,
   skills?: Array<{ name: string; instructions: string }>,
-  toolNames?: string[]
+  toolNames?: string[],
+  webMode?: WebMode
 ): string => {
   let out = instructionsFor(mode);
+  // The model has no clock; without this it anchors "latest/current" to its
+  // training cutoff and surfaces stale (e.g. 2024/2025) info as if it were now.
+  out += `\n\nThe current date is ${currentDateString()}. Use it as the present when judging what is current or "latest"; your own training data may be out of date.`;
   // Tell the model which plugin tools it actually has, so it calls them instead
   // of guessing. Weaker tool-callers ignore tools they're not told about.
   if (toolNames && toolNames.length > 0) {
@@ -98,6 +145,9 @@ const composeInstructions = (
       `\n\nYou have these connected plugin tools available: ${toolNames.join(", ")}. ` +
       "When the user's request needs one (e.g. searching Notion, creating a Linear issue), " +
       "call the tool instead of guessing or saying you can't.";
+  }
+  if (webMode) {
+    out += webModeBrief(webMode);
   }
   if (skills && skills.length > 0) {
     const blocks = skills
@@ -122,6 +172,7 @@ export const streamMessage = async ({
   tools,
   thinking,
   skills,
+  webMode,
   abortSignal,
   onEvent
 }: StreamArgs): Promise<void> => {
@@ -161,7 +212,38 @@ export const streamMessage = async ({
     }, IDLE_MS);
   };
 
-  type FullChunk = { type: string; payload?: { text?: string; error?: unknown } };
+  type FullChunk = {
+    type: string;
+    payload?: {
+      text?: string;
+      error?: unknown;
+      // tool-call chunks: name + args (shape varies across AI SDK / Mastra versions).
+      toolName?: string;
+      args?: Record<string, unknown>;
+      input?: Record<string, unknown>;
+    };
+  };
+
+  /** Turn a web_search/fetch_url tool-call into a human "Searching…/Reading…" line. */
+  const progressLabel = (chunk: FullChunk): string | null => {
+    const name = chunk.payload?.toolName;
+    const args = chunk.payload?.args ?? chunk.payload?.input ?? {};
+    if (name === "web_search") {
+      const query = typeof args.query === "string" ? args.query : "";
+      return query ? `Searching "${query}"` : "Searching the web…";
+    }
+    if (name === "fetch_url") {
+      const url = typeof args.url === "string" ? args.url : "";
+      try {
+        return url ? `Reading ${new URL(url).hostname}` : "Reading a page…";
+      } catch {
+        return "Reading a page…";
+      }
+    }
+    // A tool-call we couldn't identify (older chunk shape) — still show activity
+    // during a web run so the user sees something is happening.
+    return name ? `Running ${name}…` : webMode ? "Searching the web…" : null;
+  };
 
   // Hoisted so the catch can flush partial text when the run is aborted (Stop).
   let full = "";
@@ -171,7 +253,7 @@ export const streamMessage = async ({
     const agent = new Agent({
       id: "relay",
       name: "relay",
-      instructions: composeInstructions(activeTab, skills, pluginToolNames),
+      instructions: composeInstructions(activeTab, skills, pluginToolNames, webMode),
       model,
       ...(tools ? { tools: tools as never } : {})
     });
@@ -180,7 +262,9 @@ export const streamMessage = async ({
     const modelMessages = toModelMessages(messages);
 
     // Bound the agentic loop so a misbehaving model can't spin tool calls forever.
-    const streamOptions: Record<string, unknown> = { maxSteps: 8 };
+    // Research/search runs need more room for repeated search → read → synthesize.
+    const maxSteps = webMode === "research" ? 18 : webMode === "search" ? 12 : 8;
+    const streamOptions: Record<string, unknown> = { maxSteps };
     if (hasToolsets) {
       streamOptions.toolsets = toolsets;
     }
@@ -242,9 +326,17 @@ export const streamMessage = async ({
           }
           break;
         }
-        case "tool-call":
+        case "tool-call": {
           console.log("[relay] tool-call chunk");
+          // Surface live "Searching…/Reading…" steps only during web/research runs.
+          if (webMode) {
+            const label = progressLabel(chunk);
+            if (label) {
+              emit({ type: "progress", runId, label });
+            }
+          }
           break;
+        }
         case "error": {
           const errText =
             chunk.payload?.error instanceof Error

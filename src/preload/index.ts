@@ -19,6 +19,7 @@ import type {
   PluginSummary
 } from "../shared/plugins/types";
 import type { Skill, SkillInput } from "../shared/skills/types";
+import type { Project } from "../shared/projects/types";
 
 const agentApi = {
   /** Start a streaming run; returns the runId used to tag incoming events. */
@@ -28,6 +29,10 @@ const agentApi = {
   /** Interrupt an in-flight run (the Stop button); keeps any partial text. */
   stop(runId: string): Promise<void> {
     return ipcRenderer.invoke("agent:stop", runId);
+  },
+  /** Answer a pending human-in-the-loop approval request (code mode). */
+  approve(approvalId: string, approved: boolean): Promise<void> {
+    return ipcRenderer.invoke("agent:approve", approvalId, approved);
   },
   /** Subscribe to stream events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void {
@@ -108,6 +113,22 @@ const pluginsApi = {
   }
 };
 
+const projectsApi = {
+  list(): Promise<Project[]> {
+    return ipcRenderer.invoke("projects:list");
+  },
+  create(name: string): Promise<Project> {
+    return ipcRenderer.invoke("projects:create", name);
+  },
+  /** Open the native folder picker and link the chosen folder (null if cancelled). */
+  link(): Promise<Project | null> {
+    return ipcRenderer.invoke("projects:link");
+  },
+  remove(id: string): Promise<Project[]> {
+    return ipcRenderer.invoke("projects:remove", id);
+  }
+};
+
 const skillsApi = {
   list(): Promise<Skill[]> {
     return ipcRenderer.invoke("skills:list");
@@ -142,6 +163,7 @@ contextBridge.exposeInMainWorld("settings", settingsApi);
 contextBridge.exposeInMainWorld("providers", providersApi);
 contextBridge.exposeInMainWorld("sessions", sessionsApi);
 contextBridge.exposeInMainWorld("plugins", pluginsApi);
+contextBridge.exposeInMainWorld("projects", projectsApi);
 contextBridge.exposeInMainWorld("skills", skillsApi);
 contextBridge.exposeInMainWorld("attachments", attachmentsApi);
 
@@ -151,4 +173,5 @@ export type SettingsApi = typeof settingsApi;
 export type ProvidersApi = typeof providersApi;
 export type SessionsApi = typeof sessionsApi;
 export type PluginsApi = typeof pluginsApi;
+export type ProjectsApi = typeof projectsApi;
 export type SkillsApi = typeof skillsApi;

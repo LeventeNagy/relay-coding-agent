@@ -187,6 +187,12 @@ export const SettingsView = ({ settings }: SettingsViewProps): ReactElement => {
                     <span key={plan}>{plan}</span>
                   ))}
                 </div>
+                {new Set(credential.models.map((m) => m.split("/")[0])).size > 1 && (
+                  <p className="provider-multiroute">
+                    One key, multiple endpoints — coding-plan and region routes only work if your
+                    account holds that plan or subscription.
+                  </p>
+                )}
               </div>
               <label>
                 <span>{credential.variable}</span>

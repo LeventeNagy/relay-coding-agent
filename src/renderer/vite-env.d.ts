@@ -4,6 +4,7 @@ import type {
   AgentApi,
   AttachmentsApi,
   PluginsApi,
+  ProjectsApi,
   ProvidersApi,
   SessionsApi,
   SettingsApi,
@@ -17,6 +18,7 @@ declare global {
     providers: ProvidersApi;
     sessions: SessionsApi;
     plugins: PluginsApi;
+    projects: ProjectsApi;
     skills: SkillsApi;
     attachments: AttachmentsApi;
   }

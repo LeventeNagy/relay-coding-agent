@@ -1,6 +1,10 @@
+import type { AccessMode } from "../projects/types";
+
 export type AgentRole = "user" | "assistant" | "system";
 
 export type WorkspaceMode = "chat" | "code";
+
+export type { AccessMode };
 
 /** Web augmentation for a single turn: a quick search, or a deep research run. */
 export type WebMode = "search" | "research";
@@ -36,6 +40,8 @@ export interface AgentMessage {
   reasoning?: string;
   /** Live web/research progress lines ("Searching…", "Reading…") for this turn. */
   progress?: string[];
+  /** An outstanding human-in-the-loop approval request for this run (code mode). */
+  pendingApproval?: { approvalId: string; tool: string; summary: string; detail?: string };
   createdAt: string;
 }
 
@@ -57,6 +63,8 @@ export interface ThinkingOptions {
 export interface AgentRequest {
   /** Client-generated run id; events are tagged with it (also the assistant message id). */
   runId: string;
+  /** Session this run belongs to, so the main process can manage its context. */
+  sessionId?: string;
   /** Full conversation so far; the last entry is the new user turn. */
   messages: AgentMessage[];
   /** Mastra model-router id, e.g. "deepseek/deepseek-chat". */
@@ -70,6 +78,12 @@ export interface AgentRequest {
   activePluginIds?: string[];
   /** Web augmentation for this turn: quick search or deep research. */
   webMode?: WebMode;
+  /** Code-mode project this run operates in (its folder scopes the tools). */
+  projectId?: string;
+  /** Code-mode permission gating for risky actions (writes, commands). */
+  accessMode?: AccessMode;
+  /** Code-mode plan mode: read-only, asks questions and proposes a plan (no changes). */
+  planMode?: boolean;
 }
 
 /** Streaming events pushed from main -> renderer for a single run. */
@@ -77,6 +91,8 @@ export type AgentStreamEvent =
   | { type: "delta"; runId: string; text: string }
   | { type: "reasoning"; runId: string; text: string }
   | { type: "progress"; runId: string; label: string }
+  | { type: "context"; runId: string; used: number; window: number; compacted: boolean }
+  | { type: "approval"; runId: string; approvalId: string; tool: string; summary: string; detail?: string }
   | { type: "done"; runId: string; text: string }
   | { type: "error"; runId: string; message: string };
 
@@ -95,6 +111,8 @@ export interface SessionSummary {
   mode: WorkspaceMode;
   /** Mastra router id last used for this session, if any. */
   model: string | null;
+  /** Code-mode project this session belongs to (its folder scopes the agent). */
+  projectId?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  AccessMode,
   AgentMessage,
   Attachment,
   ChatSession,
@@ -26,6 +27,7 @@ interface ActiveMeta {
   title: string;
   createdAt: string;
   model: string | null;
+  projectId?: string;
 }
 
 export interface SessionsController {
@@ -45,10 +47,16 @@ export interface SessionsController {
     skills?: SkillRef[],
     thinking?: ThinkingOptions,
     attachments?: Attachment[],
-    webMode?: WebMode
+    webMode?: WebMode,
+    accessMode?: AccessMode,
+    planMode?: boolean
   ) => void;
   /** Interrupt the in-flight run (Stop button); keeps the partial reply. */
   stop: () => void;
+  /** Answer a pending code-mode approval request, then clear the prompt. */
+  approve: (approvalId: string, approved: boolean) => void;
+  /** Last run's context usage (server truth) for the meter; null until a run reports. */
+  contextInfo: { used: number; window: number; compacted: boolean } | null;
   newSession: () => void;
   openSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -65,13 +73,18 @@ export const useSessions = (
   mode: WorkspaceMode,
   model: string | null,
   /** Connected, chat-scoped plugin ids — the default active set for new chats. */
-  defaultPluginIds: string[]
+  defaultPluginIds: string[],
+  /** Code mode: the project a new chat belongs to (stamped on the session). */
+  projectId?: string | null
 ): SessionsController => {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [activePluginIds, setActivePluginIdsState] = useState<string[] | null>(null);
+  const [contextInfo, setContextInfo] = useState<
+    { used: number; window: number; compacted: boolean } | null
+  >(null);
 
   // Refs so the once-registered event handler and persistence effect see fresh values.
   const messagesRef = useRef<AgentMessage[]>([]);
@@ -82,12 +95,14 @@ export const useSessions = (
   const streamingIdRef = useRef<string | null>(null);
   const activePluginIdsRef = useRef<string[] | null>(null);
   const defaultPluginIdsRef = useRef<string[]>(defaultPluginIds);
+  const projectIdRef = useRef<string | null | undefined>(projectId);
   messagesRef.current = messages;
   modeRef.current = mode;
   modelRef.current = model;
   streamingIdRef.current = streamingId;
   activePluginIdsRef.current = activePluginIds;
   defaultPluginIdsRef.current = defaultPluginIds;
+  projectIdRef.current = projectId;
 
   /** The set actually used this run: explicit selection, or the connected default. */
   const resolvedPluginIds = (): string[] => activePluginIdsRef.current ?? defaultPluginIdsRef.current;
@@ -102,6 +117,7 @@ export const useSessions = (
       title: meta.title,
       mode: modeRef.current,
       model: meta.model ?? modelRef.current,
+      projectId: meta.projectId,
       messages: messagesToSave,
       // Persist the concrete set this conversation used (resolves the default).
       activePluginIds: resolvedPluginIds(),
@@ -131,6 +147,18 @@ export const useSessions = (
     }
   }, []);
 
+  const approve = useCallback((approvalId: string, approved: boolean) => {
+    void window.agent.approve(approvalId, approved);
+    // Optimistically clear the prompt for whichever message holds it.
+    setMessages((current) =>
+      current.map((message) =>
+        message.pendingApproval?.approvalId === approvalId
+          ? { ...message, pendingApproval: undefined }
+          : message
+      )
+    );
+  }, []);
+
   const newSession = useCallback(() => {
     activeMetaRef.current = null;
     setActiveSessionId(null);
@@ -138,6 +166,7 @@ export const useSessions = (
     setStreamingId(null);
     activePluginIdsRef.current = null;
     setActivePluginIdsState(null);
+    setContextInfo(null);
   }, []);
 
   // Stream events (registered once); routed to the assistant message by runId.
@@ -171,12 +200,42 @@ export const useSessions = (
         );
         return;
       }
+      if (event.type === "context") {
+        setContextInfo({ used: event.used, window: event.window, compacted: event.compacted });
+        return;
+      }
+      if (event.type === "approval") {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === event.runId
+              ? {
+                  ...message,
+                  pendingApproval: {
+                    approvalId: event.approvalId,
+                    tool: event.tool,
+                    summary: event.summary,
+                    detail: event.detail
+                  }
+                }
+              : message
+          )
+        );
+        return;
+      }
       if (event.type === "error") {
         setMessages((current) =>
           current.map((message) =>
             message.id === event.runId
-              ? { ...message, content: message.content || `⚠️ ${event.message}` }
+              ? { ...message, content: message.content || `⚠️ ${event.message}`, pendingApproval: undefined }
               : message
+          )
+        );
+      }
+      if (event.type === "done") {
+        // Clear any leftover approval prompt when the run ends.
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === event.runId ? { ...message, pendingApproval: undefined } : message
           )
         );
       }
@@ -220,7 +279,9 @@ export const useSessions = (
       skills?: SkillRef[],
       thinking?: ThinkingOptions,
       attachments?: Attachment[],
-      webMode?: WebMode
+      webMode?: WebMode,
+      accessMode?: AccessMode,
+      planMode?: boolean
     ) => {
       const trimmed = text.trim();
       const hasAttachments = Boolean(attachments && attachments.length > 0);
@@ -249,7 +310,13 @@ export const useSessions = (
       // Lazily create the session on the first message of a draft.
       if (!activeMetaRef.current) {
         const now = new Date().toISOString();
-        const meta: ActiveMeta = { id: createId("session"), title: makeTitle(trimmed), createdAt: now, model };
+        const meta: ActiveMeta = {
+          id: createId("session"),
+          title: makeTitle(trimmed),
+          createdAt: now,
+          model,
+          projectId: projectIdRef.current ?? undefined
+        };
         activeMetaRef.current = meta;
         setActiveSessionId(meta.id);
         persistActive(nextMessages);
@@ -259,13 +326,17 @@ export const useSessions = (
       setStreamingId(runId);
       void window.agent.start({
         runId,
+        sessionId: activeMetaRef.current?.id,
         messages: history,
         model,
         activeTab: mode,
         skills: skills && skills.length > 0 ? skills : undefined,
         thinking,
         activePluginIds: resolvedPluginIds(),
-        webMode
+        webMode,
+        projectId: activeMetaRef.current?.projectId,
+        accessMode,
+        planMode
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -283,11 +354,13 @@ export const useSessions = (
           id: session.id,
           title: session.title,
           createdAt: session.createdAt,
-          model: session.model
+          model: session.model,
+          projectId: session.projectId
         };
         setActiveSessionId(session.id);
         setMessages(session.messages);
         setStreamingId(null);
+        setContextInfo(null);
         // Restore the saved active set; legacy sessions (undefined) fall back to
         // the connected-chat default via `null`.
         const restored = session.activePluginIds ?? null;
@@ -325,8 +398,10 @@ export const useSessions = (
     isStreaming: streamingId !== null,
     activePluginIds,
     setActivePluginIds,
+    contextInfo,
     send,
     stop,
+    approve,
     newSession,
     openSession,
     deleteSession

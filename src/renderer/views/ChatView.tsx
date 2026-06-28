@@ -4,6 +4,7 @@ import {
   Brain,
   Check,
   ChevronDown,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -14,12 +15,15 @@ import {
   ScanSearch,
   Search,
   SendHorizontal,
+  ShieldCheck,
   Sparkles,
   Square,
   X
 } from "lucide-react";
 import { buildProviderGroups, reasoningCapsFor, supportsVision } from "../../shared/agent/providers";
-import type { Attachment, ThinkingOptions, WebMode } from "../../shared/agent/types";
+import { contextWindowFor } from "../../shared/agent/contextWindows";
+import { estimateConversationTokens } from "../../shared/agent/tokens";
+import type { AccessMode, Attachment, ThinkingOptions, WebMode } from "../../shared/agent/types";
 import type { PluginSummary } from "../../shared/plugins/types";
 import { Conversation, ConversationContent } from "../components/ai-elements/conversation";
 import { Message, MessageContent } from "../components/ai-elements/message";
@@ -41,6 +45,8 @@ interface ChatViewProps {
   chatPlugins: PluginSummary[];
   /** Default active set (connected chat-plugins) when the chat hasn't chosen. */
   defaultPluginIds: string[];
+  /** Code mode: the active project's name (shown in the header). */
+  projectName?: string;
   /** "+" menu → Skills → Add skill (opens the new-skill form). */
   onAddSkill: () => void;
   /** "+" menu → Skills → Manage skills (opens the skills panel). */
@@ -51,6 +57,17 @@ interface ChatViewProps {
 
 const MODEL_RESULT_LIMIT = 60;
 const SLASH_RESULT_LIMIT = 8;
+
+/** Code-mode permission levels shown in the composer's access dropdown. */
+const ACCESS_OPTIONS: Array<{ value: AccessMode; label: string; desc: string }> = [
+  { value: "ask", label: "Ask for approval", desc: "Always ask before edits and commands." },
+  { value: "auto", label: "Approve for me", desc: "Only ask for risky actions (commands)." },
+  { value: "full", label: "Full access", desc: "Edit files and run commands without asking." }
+];
+
+/** Compact token count for the context meter, e.g. 42_000 → "42k". */
+const formatTokens = (n: number): string =>
+  n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k` : `${n}`;
 
 const labelForModel = (model: string | null): string => {
   if (!model) {
@@ -210,6 +227,7 @@ export const ChatView = ({
   modeLabel,
   chatPlugins,
   defaultPluginIds,
+  projectName,
   onAddSkill,
   onManageSkills,
   onOpenPlugins
@@ -227,6 +245,12 @@ export const ChatView = ({
   const [plusOpen, setPlusOpen] = useState(false);
   // One-shot web augmentation for the next message (cleared after send).
   const [webMode, setWebMode] = useState<WebMode | null>(null);
+  // Code-mode permission gating (sticky while the chat is open).
+  const [accessMode, setAccessMode] = useState<AccessMode>("auto");
+  const [accessOpen, setAccessOpen] = useState(false);
+  const accessRef = useRef<HTMLDivElement | null>(null);
+  // Code-mode plan mode: read-only, ask questions, propose a plan before building.
+  const [planMode, setPlanMode] = useState(false);
 
   // Close the "+" menu on outside click or Escape.
   useEffect(() => {
@@ -250,6 +274,19 @@ export const ChatView = ({
       document.removeEventListener("keydown", onKey);
     };
   }, [plusOpen]);
+  // Close the access dropdown on outside click.
+  useEffect(() => {
+    if (!accessOpen) {
+      return;
+    }
+    const onDown = (event: globalThis.MouseEvent): void => {
+      if (accessRef.current && !accessRef.current.contains(event.target as Node)) {
+        setAccessOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [accessOpen]);
   const skillSlugs = useMemo(() => new Set(skillList.map((skill) => skill.slug)), [skillList]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
@@ -325,6 +362,17 @@ export const ChatView = ({
 
   const hasMessages = chat.messages.length > 0;
   const hasModel = Boolean(state.activeModel) && allModels.some((option) => option.model === state.activeModel);
+
+  // Context usage meter: prefer the last run's server-reported tokens, else a
+  // live estimate of the current history vs the active model's window.
+  const estimatedUsed = useMemo(
+    () => estimateConversationTokens(chat.messages),
+    [chat.messages]
+  );
+  const ctxWindow = chat.contextInfo?.window || contextWindowFor(state.activeModel);
+  const ctxUsed = chat.contextInfo?.used || estimatedUsed;
+  const ctxPct = ctxWindow > 0 ? Math.min(100, Math.round((ctxUsed / ctxWindow) * 100)) : 0;
+  const ctxLevel = ctxPct >= 95 ? "full" : ctxPct >= 80 ? "high" : "ok";
 
   useEffect(() => {
     // The whole canvas scrolls now, so follow the stream by scrolling that page.
@@ -445,9 +493,11 @@ export const ChatView = ({
     }
     const refs = resolveSkillRefs(text, skillList);
 
-    const mode = webMode ?? undefined;
+    const wm = webMode ?? undefined;
+    const am = mode === "code" ? accessMode : undefined;
+    const pm = mode === "code" ? planMode : undefined;
     const dispatch = (attachments?: Attachment[]): void => {
-      chat.send(text, refs, thinkingPayload, attachments, mode);
+      chat.send(text, refs, thinkingPayload, attachments, wm, am, pm);
     };
 
     if (staged.length > 0) {
@@ -553,6 +603,15 @@ export const ChatView = ({
           </button>
         </div>
       )}
+      {mode === "code" && planMode && (
+        <div className="composer-mode-chip plan-chip">
+          <ClipboardList size={13} />
+          <span>Plan mode — exploring &amp; planning only, no changes</span>
+          <button type="button" className="plan-build" onClick={() => setPlanMode(false)}>
+            Start building
+          </button>
+        </div>
+      )}
       {visionWarning && (
         <p className="composer-hint">This model may not be able to read images. Pick a vision model for image questions.</p>
       )}
@@ -649,7 +708,27 @@ export const ChatView = ({
             <Plus size={18} />
           </button>
           {plusOpen && (
-            <ul className="plus-menu" role="menu" aria-label="Add to chat">
+            <ul className="plus-menu" role="menu" aria-label={mode === "code" ? "Code actions" : "Add to chat"}>
+              {mode === "code" && (
+                <>
+                  <li role="none">
+                    <button
+                      role="menuitemcheckbox"
+                      type="button"
+                      aria-checked={planMode}
+                      className={planMode ? "plus-plan on" : "plus-plan"}
+                      onClick={() => runPlusAction(() => setPlanMode((p) => !p))}
+                    >
+                      <ClipboardList size={15} />
+                      <span className="plus-label">Plan first</span>
+                      <span className="plus-section-hint">ask &amp; plan, no changes</span>
+                      {planMode && <Check size={14} />}
+                    </button>
+                  </li>
+                  <li className="plus-divider" role="separator" />
+                </>
+              )}
+
               <li role="none">
                 <button role="menuitem" type="button" onClick={() => runPlusAction(openFilePicker)}>
                   <Paperclip size={15} />
@@ -658,26 +737,28 @@ export const ChatView = ({
                 </button>
               </li>
 
-              <li className="plus-sub" role="none">
-                <button role="menuitem" type="button" aria-haspopup="menu" disabled>
-                  <FolderPlus size={15} />
-                  <span className="plus-label">Add to project</span>
-                  <span className="plus-soon">Soon</span>
-                  <ChevronRight size={14} className="plus-caret" />
-                </button>
-                <ul className="plus-submenu" role="menu" aria-label="Add to project">
-                  <li role="none">
-                    <button role="menuitem" type="button" disabled>
-                      Create project
-                    </button>
-                  </li>
-                  <li role="none">
-                    <button role="menuitem" type="button" disabled>
-                      Add to existing project
-                    </button>
-                  </li>
-                </ul>
-              </li>
+              {mode !== "code" && (
+                <li className="plus-sub" role="none">
+                  <button role="menuitem" type="button" aria-haspopup="menu" disabled>
+                    <FolderPlus size={15} />
+                    <span className="plus-label">Add to project</span>
+                    <span className="plus-soon">Soon</span>
+                    <ChevronRight size={14} className="plus-caret" />
+                  </button>
+                  <ul className="plus-submenu" role="menu" aria-label="Add to project">
+                    <li role="none">
+                      <button role="menuitem" type="button" disabled>
+                        Create project
+                      </button>
+                    </li>
+                    <li role="none">
+                      <button role="menuitem" type="button" disabled>
+                        Add to existing project
+                      </button>
+                    </li>
+                  </ul>
+                </li>
+              )}
 
               <li className="plus-divider" role="separator" />
 
@@ -701,6 +782,8 @@ export const ChatView = ({
                 </ul>
               </li>
 
+              {mode !== "code" && (
+              <>
               <li className="plus-section-label" role="presentation">
                 <Blocks size={13} />
                 <span>Plugins</span>
@@ -770,6 +853,8 @@ export const ChatView = ({
                   {webMode === "research" && <Check size={14} />}
                 </button>
               </li>
+              </>
+              )}
             </ul>
           )}
         </div>
@@ -803,6 +888,42 @@ export const ChatView = ({
                     );
                   })}
                 </div>
+              )}
+            </div>
+          )}
+          {mode === "code" && (
+            <div className="access-picker" ref={accessRef}>
+              <button
+                type="button"
+                className={`access-button access-${accessMode}`}
+                aria-haspopup="menu"
+                aria-expanded={accessOpen}
+                onClick={() => setAccessOpen((o) => !o)}
+              >
+                <ShieldCheck size={14} />
+                <span>{ACCESS_OPTIONS.find((o) => o.value === accessMode)?.label}</span>
+                <ChevronDown size={13} />
+              </button>
+              {accessOpen && (
+                <ul className="access-menu" role="menu" aria-label="Permission level">
+                  {ACCESS_OPTIONS.map((option) => (
+                    <li key={option.value} role="none">
+                      <button
+                        role="menuitemradio"
+                        type="button"
+                        aria-checked={accessMode === option.value}
+                        className={accessMode === option.value ? "active" : ""}
+                        onClick={() => {
+                          setAccessMode(option.value);
+                          setAccessOpen(false);
+                        }}
+                      >
+                        <span className="access-opt-label">{option.label}</span>
+                        <span className="access-opt-desc">{option.desc}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}
@@ -929,10 +1050,33 @@ export const ChatView = ({
     </form>
   );
 
+  // Rendered *below* the composer box (outside the form), right-aligned.
+  const contextMeter =
+    hasMessages && hasModel ? (
+      <div
+        className={`context-meter ${ctxLevel}`}
+        title={
+          `Context: ~${ctxUsed.toLocaleString()} / ${ctxWindow.toLocaleString()} tokens (${ctxPct}%)` +
+          (chat.contextInfo?.compacted ? " — older messages compacted to fit" : "")
+        }
+      >
+        <span className="context-meter-bar" aria-hidden="true">
+          <span className="context-meter-fill" style={{ width: `${ctxPct}%` }} />
+        </span>
+        <span className="context-meter-label">
+          {formatTokens(ctxUsed)} / {formatTokens(ctxWindow)}
+          {chat.contextInfo?.compacted ? " · compacted" : ""}
+        </span>
+      </div>
+    ) : null;
+
   if (!hasMessages) {
     return (
       <section className="chat-start">
-        <p className="chat-start-greeting">Relay · {modeLabel}</p>
+        <p className="chat-start-greeting">
+          Relay · {modeLabel}
+          {projectName ? ` · ${projectName}` : ""}
+        </p>
         {composer}
       </section>
     );
@@ -982,14 +1126,47 @@ export const ChatView = ({
                   : chat.isStreaming
                     ? message.reasoning || (message.progress && message.progress.length > 0)
                       ? null
-                      : <ThinkingIndicator />
+                      : message.pendingApproval
+                        ? null
+                        : <ThinkingIndicator />
                     : ""}
+                {message.pendingApproval && (
+                  <div className="approval-prompt">
+                    <div className="approval-head">
+                      <ShieldCheck size={15} />
+                      <span>Approval needed</span>
+                    </div>
+                    <p className="approval-summary">{message.pendingApproval.summary}</p>
+                    {message.pendingApproval.detail && (
+                      <p className="approval-detail">{message.pendingApproval.detail}</p>
+                    )}
+                    <div className="approval-actions">
+                      <button
+                        type="button"
+                        className="approval-deny"
+                        onClick={() => chat.approve(message.pendingApproval!.approvalId, false)}
+                      >
+                        Deny
+                      </button>
+                      <button
+                        type="button"
+                        className="approval-approve"
+                        onClick={() => chat.approve(message.pendingApproval!.approvalId, true)}
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  </div>
+                )}
               </MessageContent>
             </Message>
           ))}
         </ConversationContent>
       </Conversation>
-      <div className="chat-session-composer">{composer}</div>
+      <div className="chat-session-composer">
+        {composer}
+        {contextMeter}
+      </div>
     </section>
   );
 };

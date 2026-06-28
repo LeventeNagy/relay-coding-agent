@@ -46,3 +46,28 @@ export const getProviderModels = (): ProviderModels => {
   cache = result;
   return cache;
 };
+
+/**
+ * Maps each catalog provider slug to the env var Mastra's registry reads its API
+ * key from (`apiKeyEnvVar`). The source of truth for verifying Relay's catalog
+ * mapping (see providerCheck). Slugs missing from the registry are omitted.
+ */
+export const getProviderEnvVars = (): Record<string, string> => {
+  const result: Record<string, string> = {};
+  try {
+    const registry = JSON.parse(readFileSync(locateRegistry(), "utf8")) as {
+      providers?: Record<string, { apiKeyEnvVar?: string }>;
+    };
+    const providers = registry.providers ?? {};
+    for (const slug of new Set(providerCatalog.map(providerSlug))) {
+      const envVar = providers[slug]?.apiKeyEnvVar;
+      if (envVar) {
+        result[slug] = envVar;
+      }
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Failed to read provider env vars from registry:", error);
+  }
+  return result;
+};

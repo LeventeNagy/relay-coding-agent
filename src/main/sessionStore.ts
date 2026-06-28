@@ -42,6 +42,7 @@ const toSummary = (session: ChatSession): SessionSummary => ({
   title: session.title,
   mode: session.mode,
   model: session.model,
+  projectId: session.projectId,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt
 });

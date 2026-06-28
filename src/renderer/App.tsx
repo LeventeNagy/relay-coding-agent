@@ -1,12 +1,27 @@
 import { CSSProperties, PointerEvent, ReactElement, useEffect, useMemo, useState } from "react";
-import { Blocks, Code2, Columns2, MessageCircle, Plus, Search, Settings, Trash2 } from "lucide-react";
+import {
+  Blocks,
+  Code2,
+  Columns2,
+  FolderGit2,
+  FolderPlus,
+  Link2,
+  MessageCircle,
+  Plus,
+  Search,
+  Settings,
+  Trash2
+} from "lucide-react";
 import { useSessions } from "./hooks/useSessions";
 import { useSettings } from "./hooks/useSettings";
 import { usePlugins } from "./hooks/usePlugins";
+import { useProjects } from "./hooks/useProjects";
 import { useSkills } from "./hooks/useSkills";
 import { ChatView } from "./views/ChatView";
 import { SettingsView } from "./views/SettingsView";
 import { PluginsView } from "./views/PluginsView";
+import { SessionSearch } from "./components/SessionSearch";
+import { ProjectsPanel } from "./components/ProjectsPanel";
 import { availableModels } from "../shared/agent/providers";
 import type { WorkspaceMode } from "../shared/agent/types";
 
@@ -36,14 +51,17 @@ const relativeTime = (iso: string): string => {
 export const App = (): ReactElement => {
   const settings = useSettings();
   const plugins = usePlugins();
+  const projectsCtl = useProjects();
   const skills = useSkills();
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>("chat");
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AppView>("chat");
   const [sidebarWidth, setSidebarWidth] = useState(320);
   // Which tab the Plugins view opens on, and whether to pop the new-skill form,
   // when navigated to from the composer "+" menu.
   const [pluginsTab, setPluginsTab] = useState<"plugins" | "skills">("plugins");
   const [skillsAutoNew, setSkillsAutoNew] = useState(false);
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
 
   const openPlugins = (): void => {
     setPluginsTab("plugins");
@@ -67,8 +85,53 @@ export const App = (): ReactElement => {
     [chatPlugins]
   );
 
-  const chat = useSessions(activeWorkspace, settings.state.activeModel, defaultPluginIds);
+  const chat = useSessions(
+    activeWorkspace,
+    settings.state.activeModel,
+    defaultPluginIds,
+    activeWorkspace === "code" ? activeProjectId : null
+  );
   const activeWorkspaceLabel = workspaceTabs.find((tab) => tab.id === activeWorkspace)?.label ?? "Chat";
+
+  // --- Project-aware session handlers (code mode) ---
+  const openSessionInProject = (id: string): void => {
+    const summary = chat.sessions.find((s) => s.id === id);
+    if (summary?.projectId) {
+      setActiveProjectId(summary.projectId);
+    }
+    chat.openSession(id);
+    setActiveView(activeWorkspace);
+  };
+
+  const newChatInProject = (projectId: string): void => {
+    setActiveProjectId(projectId);
+    chat.newSession();
+    setActiveView("code");
+  };
+
+  const createProject = (name: string): void => {
+    void projectsCtl.create(name).then((project) => {
+      if (project) {
+        newChatInProject(project.id);
+      }
+    });
+  };
+
+  const linkProject = (): void => {
+    void projectsCtl.link().then((project) => {
+      if (project) {
+        newChatInProject(project.id);
+      }
+    });
+  };
+
+  const removeProject = (id: string): void => {
+    void projectsCtl.remove(id);
+    if (activeProjectId === id) {
+      setActiveProjectId(null);
+      chat.newSession();
+    }
+  };
 
   // Auto-select the first usable model once keys are loaded and none is chosen.
   useEffect(() => {
@@ -102,11 +165,25 @@ export const App = (): ReactElement => {
   };
 
   const startNewSession = (): void => {
+    if (activeWorkspace === "code") {
+      // Code chats live in a project; if none is active, spin up a default folder.
+      if (activeProjectId) {
+        chat.newSession();
+        setActiveView("code");
+      } else {
+        createProject("project");
+      }
+      return;
+    }
     chat.newSession();
     setActiveView(activeWorkspace);
   };
 
   const openSession = (id: string): void => {
+    if (activeWorkspace === "code") {
+      openSessionInProject(id);
+      return;
+    }
     chat.openSession(id);
     setActiveView(activeWorkspace);
   };
@@ -119,7 +196,9 @@ export const App = (): ReactElement => {
         <aside className="sidebar" aria-label="Session sidebar">
           <div className="sidebar-brand">
             <div>
-              <h1>Relay</h1>
+              <h1 className="brand-wordmark">
+                <img className="brand-logo" src="/logo.png" alt="R" />elay
+              </h1>
               <p>Open-source coding agent</p>
             </div>
             <button className="icon-button" type="button" aria-label="Toggle sidebar">
@@ -162,35 +241,64 @@ export const App = (): ReactElement => {
             <span>
               <Plus size={22} />
             </span>
-            New session
+            {activeWorkspace === "code" ? "New code chat" : "New session"}
           </button>
 
-          <div className="session-list" aria-label="Recent sessions">
-            <div className="session-list-header">
-              <span>{activeWorkspaceLabel} sessions</span>
-              <Search size={15} />
+          {activeWorkspace === "code" ? (
+            <div className="session-list" aria-label="Projects">
+              <ProjectsPanel
+                projects={projectsCtl.projects}
+                sessions={chat.sessions}
+                activeProjectId={activeProjectId}
+                activeSessionId={activeView === "settings" ? null : chat.activeSessionId}
+                onSelectProject={(id) =>
+                  setActiveProjectId((current) => (current === id ? null : id))
+                }
+                onNewChat={newChatInProject}
+                onOpenSession={openSessionInProject}
+                onDeleteSession={chat.deleteSession}
+                onCreateProject={createProject}
+                onLinkProject={linkProject}
+                onRemoveProject={removeProject}
+                formatTime={relativeTime}
+              />
             </div>
-            {chat.sessions.length === 0 && <p className="session-empty">No sessions yet</p>}
-            {chat.sessions.map((session) => {
-              const isActive = session.id === chat.activeSessionId && activeView !== "settings";
-              return (
-                <div className={isActive ? "session-row active" : "session-row"} key={session.id}>
-                  <button className="session-open" type="button" onClick={() => openSession(session.id)}>
-                    <span className="session-title">{session.title}</span>
-                    <span className="session-repo">{relativeTime(session.updatedAt)}</span>
-                  </button>
-                  <button
-                    className="session-delete"
-                    type="button"
-                    aria-label={`Delete session ${session.title}`}
-                    onClick={() => chat.deleteSession(session.id)}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          ) : (
+            <div className="session-list" aria-label="Recent sessions">
+              <div className="session-list-header">
+                <span>{activeWorkspaceLabel} sessions</span>
+                <button
+                  className="session-search-button"
+                  type="button"
+                  aria-label="Search sessions"
+                  disabled={chat.sessions.length === 0}
+                  onClick={() => setSessionSearchOpen(true)}
+                >
+                  <Search size={15} />
+                </button>
+              </div>
+              {chat.sessions.length === 0 && <p className="session-empty">No sessions yet</p>}
+              {chat.sessions.map((session) => {
+                const isActive = session.id === chat.activeSessionId && activeView !== "settings";
+                return (
+                  <div className={isActive ? "session-row active" : "session-row"} key={session.id}>
+                    <button className="session-open" type="button" onClick={() => openSession(session.id)}>
+                      <span className="session-title">{session.title}</span>
+                      <span className="session-repo">{relativeTime(session.updatedAt)}</span>
+                    </button>
+                    <button
+                      className="session-delete"
+                      type="button"
+                      aria-label={`Delete session ${session.title}`}
+                      onClick={() => chat.deleteSession(session.id)}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="account-card">
             <button
@@ -215,19 +323,40 @@ export const App = (): ReactElement => {
         </aside>
 
         <main className="preview-canvas" aria-label="Workspace canvas">
-          {showChat && (
-            <ChatView
-              chat={chat}
-              settings={settings}
-              skills={skills}
-              mode={activeWorkspace}
-              modeLabel={activeWorkspaceLabel}
-              chatPlugins={chatPlugins}
-              defaultPluginIds={defaultPluginIds}
-              onAddSkill={() => openSkills(true)}
-              onManageSkills={() => openSkills(false)}
-              onOpenPlugins={openPlugins}
-            />
+          {showChat && activeView === "code" && !activeProjectId ? (
+            <section className="project-gate">
+              <FolderGit2 size={40} />
+              <h2>Start a coding project</h2>
+              <p>Create a new project folder or link an existing one to begin. The agent works inside the folder you choose.</p>
+              <div className="project-gate-actions">
+                <button type="button" className="project-gate-create" onClick={() => createProject("project")}>
+                  <FolderPlus size={16} /> New project
+                </button>
+                <button type="button" className="project-gate-link" onClick={linkProject}>
+                  <Link2 size={16} /> Link existing folder
+                </button>
+              </div>
+            </section>
+          ) : (
+            showChat && (
+              <ChatView
+                chat={chat}
+                settings={settings}
+                skills={skills}
+                mode={activeWorkspace}
+                modeLabel={activeWorkspaceLabel}
+                chatPlugins={chatPlugins}
+                defaultPluginIds={defaultPluginIds}
+                projectName={
+                  activeWorkspace === "code"
+                    ? projectsCtl.projects.find((p) => p.id === activeProjectId)?.name
+                    : undefined
+                }
+                onAddSkill={() => openSkills(true)}
+                onManageSkills={() => openSkills(false)}
+                onOpenPlugins={openPlugins}
+              />
+            )
           )}
           {activeView === "settings" && <SettingsView settings={settings} />}
           {activeView === "plugins" && (
@@ -240,6 +369,14 @@ export const App = (): ReactElement => {
           )}
         </main>
       </div>
+      {sessionSearchOpen && (
+        <SessionSearch
+          sessions={chat.sessions}
+          formatTime={relativeTime}
+          onOpen={openSession}
+          onClose={() => setSessionSearchOpen(false)}
+        />
+      )}
     </div>
   );
 };

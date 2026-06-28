@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { streamMessage } from "../mastra/agentService";
 import { getProviderModels } from "./modelRegistry";
@@ -22,13 +23,26 @@ import {
   refreshStatuses
 } from "./mcpManager";
 import { pluginCatalog } from "../shared/plugins/catalog";
+import { logProviderMappingCheck } from "./providerCheck";
 import { deleteSkill, listSkills, saveSkill } from "./skillStore";
+import {
+  createProject,
+  getProject,
+  linkProject,
+  listProjects,
+  removeProject,
+  touchProject
+} from "./projectStore";
 import { nativeTools } from "./nativeTools";
+import { buildCodingTools, type ApprovalRequest } from "./codingTools";
+import { prepareHistory } from "./contextManager";
+import { clearCompaction } from "./contextStore";
 import { ingest as ingestAttachments, readBase64, read as readAttachment } from "./attachmentStore";
 import type {
   AgentMessage,
   AgentRequest,
   AgentRunHandle,
+  AgentStreamEvent,
   ChatSession,
   RawAttachment,
   WorkspaceMode
@@ -41,6 +55,19 @@ const createPluginId = (): string =>
 
 /** Abort controllers for in-flight agent runs, keyed by runId (for the Stop button). */
 const runControllers = new Map<string, AbortController>();
+
+/** Parked human-in-the-loop approval requests, keyed by approvalId. */
+const pendingApprovals = new Map<string, { runId: string; resolve: (ok: boolean) => void }>();
+
+/** Resolve every pending approval for a run as denied (on Stop / window close). */
+const denyRunApprovals = (runId: string): void => {
+  for (const [id, entry] of pendingApprovals) {
+    if (entry.runId === runId) {
+      entry.resolve(false);
+      pendingApprovals.delete(id);
+    }
+  }
+};
 
 /** Build a full server config from a renderer input (new or existing). */
 const configFromInput = (input: PluginInput): PluginServerConfig => ({
@@ -67,6 +94,14 @@ const broadcastPlugins = (): void => {
   }
 };
 
+/** Locate the app logo across dev (project root) and built (out/renderer) layouts. */
+const resolveAppIcon = (): string | undefined =>
+  [
+    join(__dirname, "../renderer/logo.png"),
+    join(__dirname, "../../logo.png"),
+    join(__dirname, "../../public/logo.png")
+  ].find((candidate) => existsSync(candidate));
+
 const createWindow = (): void => {
   nativeTheme.themeSource = "dark";
 
@@ -77,6 +112,7 @@ const createWindow = (): void => {
     minHeight: 640,
     backgroundColor: "#080a0f",
     title: "Relay Coding Agent",
+    icon: resolveAppIcon(),
     titleBarStyle: "hiddenInset",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -107,7 +143,10 @@ const registerIpc = (): void => {
   ipcMain.handle("sessions:list", (_event, mode: WorkspaceMode) => listSessions(mode));
   ipcMain.handle("sessions:get", (_event, id: string) => getSession(id));
   ipcMain.handle("sessions:save", (_event, session: ChatSession) => saveSession(session));
-  ipcMain.handle("sessions:delete", (_event, id: string, mode: WorkspaceMode) => deleteSession(id, mode));
+  ipcMain.handle("sessions:delete", (_event, id: string, mode: WorkspaceMode) => {
+    clearCompaction(id);
+    return deleteSession(id, mode);
+  });
 
   // --- Plugins (MCP servers) ---
   ipcMain.handle("plugins:catalog", () => pluginCatalog);
@@ -155,6 +194,25 @@ const registerIpc = (): void => {
     }
   });
 
+  // --- Projects (code-mode folders) ---
+  ipcMain.handle("projects:list", () => listProjects());
+  ipcMain.handle("projects:create", (_event, name: string) => createProject(name));
+  ipcMain.handle("projects:link", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const result = await dialog.showOpenDialog(win as BrowserWindow, {
+      title: "Select a project folder",
+      properties: ["openDirectory", "createDirectory"]
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return linkProject(result.filePaths[0]);
+  });
+  ipcMain.handle("projects:remove", (_event, id: string) => {
+    removeProject(id);
+    return listProjects();
+  });
+
   // --- Skills (reusable instructions referenced with /<slug>) ---
   ipcMain.handle("skills:list", () => listSkills());
   ipcMain.handle("skills:save", (_event, input: SkillInput) => saveSkill(input));
@@ -195,7 +253,70 @@ const registerIpc = (): void => {
     const controller = new AbortController();
     runControllers.set(runId, controller);
 
+    const emit = (streamEvent: AgentStreamEvent): void => {
+      if (!sender.isDestroyed()) {
+        sender.send("agent:event", streamEvent);
+      }
+    };
+
+    // Human-in-the-loop: ask the renderer to approve a risky action and await
+    // its answer. The "agent:approve" handler resolves the parked promise; Stop
+    // / window-close deny everything for this run so it can't hang.
+    const requestApproval = (req: ApprovalRequest): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        if (controller.signal.aborted || sender.isDestroyed()) {
+          resolve(false);
+          return;
+        }
+        const approvalId = `appr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        pendingApprovals.set(approvalId, { runId, resolve });
+        emit({ type: "approval", runId, approvalId, tool: req.tool, summary: req.summary, detail: req.detail });
+      });
+
+    // Assemble tools: chat → native tools only; code → native + filesystem/command
+    // tools scoped to the session's project folder.
+    let tools = toolsEnabled ? { ...nativeTools } : undefined;
+    let projectRoot: string | undefined;
+    if (toolsEnabled && request.activeTab === "code" && request.projectId) {
+      const project = getProject(request.projectId);
+      if (project) {
+        projectRoot = project.root;
+        touchProject(project.id);
+        tools = {
+          ...nativeTools,
+          ...buildCodingTools({
+            projectRoot,
+            accessMode: request.accessMode ?? "ask",
+            planMode: request.planMode,
+            requestApproval
+          })
+        };
+      }
+    }
+
     void (async () => {
+      // Keep the conversation within the model's context window (summarize older
+      // turns if needed); failures degrade to trimming inside prepareHistory.
+      const prepared = await prepareHistory({
+        sessionId: request.sessionId,
+        model: request.model,
+        messages: enriched,
+        onProgress: (label) => emit({ type: "progress", runId, label })
+      }).catch(() => ({
+        recentMessages: enriched,
+        summary: "",
+        used: 0,
+        window: 0,
+        compacted: false
+      }));
+      emit({
+        type: "context",
+        runId,
+        used: prepared.used,
+        window: prepared.window,
+        compacted: prepared.compacted
+      });
+
       // Fetch live MCP toolsets for the plugins this conversation activated;
       // failures shouldn't block chat. Empty selection → no toolsets.
       const toolsets = await getToolsetsFor(request.activePluginIds ?? [], request.activeTab).catch(
@@ -205,20 +326,20 @@ const registerIpc = (): void => {
         runId,
         model: request.model,
         activeTab: request.activeTab,
-        messages: enriched,
+        messages: prepared.recentMessages,
+        contextSummary: prepared.summary,
         toolsets,
-        tools: toolsEnabled ? nativeTools : undefined,
+        tools,
+        projectRoot,
+        planMode: request.planMode,
         thinking: request.thinking,
         skills: request.skills,
         webMode: request.webMode,
         abortSignal: controller.signal,
-        onEvent: (streamEvent) => {
-          if (!sender.isDestroyed()) {
-            sender.send("agent:event", streamEvent);
-          }
-        }
+        onEvent: emit
       });
       runControllers.delete(runId);
+      denyRunApprovals(runId);
     })();
 
     return { runId };
@@ -228,11 +349,24 @@ const registerIpc = (): void => {
   ipcMain.handle("agent:stop", (_event, runId: string) => {
     runControllers.get(runId)?.abort();
     runControllers.delete(runId);
+    denyRunApprovals(runId);
+  });
+
+  // Answer a parked human-in-the-loop approval request.
+  ipcMain.handle("agent:approve", (_event, approvalId: string, approved: boolean) => {
+    const entry = pendingApprovals.get(approvalId);
+    if (entry) {
+      pendingApprovals.delete(approvalId);
+      entry.resolve(approved);
+    }
   });
 };
 
 app.whenReady().then(() => {
   applyKeysToEnv();
+  // Verify our catalog's API-key env vars still match Mastra's registry, so a
+  // future drift surfaces loudly here instead of as a user's mystery auth fail.
+  logProviderMappingCheck();
   registerIpc();
   createWindow();
 

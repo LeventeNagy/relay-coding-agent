@@ -71,6 +71,12 @@ export interface StreamArgs {
   skills?: Array<{ name: string; instructions: string }>;
   /** Web augmentation for this turn: quick search or deep research. */
   webMode?: WebMode;
+  /** Summary of older turns folded out by the context manager (rides in the prompt). */
+  contextSummary?: string;
+  /** Code mode: the project folder the agent's file/command tools operate in. */
+  projectRoot?: string;
+  /** Code mode: plan mode (read-only, question-first). */
+  planMode?: boolean;
   /** Aborts the run when the user hits Stop; partial text is kept. */
   abortSignal?: AbortSignal;
   onEvent: (event: AgentStreamEvent) => void;
@@ -127,17 +133,58 @@ const webModeBrief = (webMode: WebMode): string => {
   );
 };
 
-/** Compose mode instructions with referenced skills, plugin tools, and web mode. */
+/** Coding-agent brief appended in code mode when a project folder is active. */
+const codingBrief = (projectRoot: string): string =>
+  "\n\n## Coding mode\n" +
+  `You are working inside the project folder \`${projectRoot}\`. You have tools to ` +
+  "inspect and change it: `list_dir`, `read_file`, `write_file`, `edit_file`, and " +
+  "`run_command` (runs in the project folder). Workflow: explore what's there first, " +
+  "make focused edits, then **verify** your work by running it (build/lint/tests/`node --check`, " +
+  "start a dev server, etc.). Paths are relative to the project root. Keep changes small and " +
+  "reviewable, and briefly report what you changed and how you verified it. Some actions may " +
+  "require the user's approval — if one is denied, adapt instead of retrying blindly.";
+
+/** Plan-mode brief: read-only, question-first, ends with a proposed plan. */
+const planBrief = (projectRoot: string): string =>
+  "\n\n## Plan mode (READ-ONLY)\n" +
+  `You are in PLAN MODE for the project at \`${projectRoot}\`. You currently have ONLY read-only ` +
+  "tools (`list_dir`, `read_file`) — you cannot and must not write files or run commands yet.\n" +
+  "Your job, before any code is written:\n" +
+  "1. Ask the user a thorough set of detailed clarifying questions about the project — goals and " +
+  "success criteria, target users, tech stack/framework and versions, scope (what's in and out), " +
+  "design/UX direction, data and integrations, constraints, and tricky edge cases. Ask everything " +
+  "you'd need to build it well; don't assume.\n" +
+  "2. Explore the existing files (read-only) to ground your understanding.\n" +
+  "3. Once you have enough, present a clear, structured implementation plan: the approach, the " +
+  "files you'll create/change, and how you'll verify it.\n" +
+  "Do not start building. When the plan is ready, tell the user to turn off Plan mode (the ⊞ menu) " +
+  "to start implementing.";
+
+/** Compose mode instructions with referenced skills, plugin tools, web/code mode. */
 const composeInstructions = (
   mode: WorkspaceMode,
   skills?: Array<{ name: string; instructions: string }>,
   toolNames?: string[],
-  webMode?: WebMode
+  webMode?: WebMode,
+  contextSummary?: string,
+  projectRoot?: string,
+  planMode?: boolean
 ): string => {
   let out = instructionsFor(mode);
+  if (mode === "code" && projectRoot) {
+    out += planMode ? planBrief(projectRoot) : codingBrief(projectRoot);
+  }
   // The model has no clock; without this it anchors "latest/current" to its
   // training cutoff and surfaces stale (e.g. 2024/2025) info as if it were now.
   out += `\n\nThe current date is ${currentDateString()}. Use it as the present when judging what is current or "latest"; your own training data may be out of date.`;
+  // Earlier turns folded into a summary by the context manager (the verbatim
+  // recent messages still follow as normal turns).
+  if (contextSummary && contextSummary.trim()) {
+    out +=
+      `\n\n## Conversation so far (summary of earlier messages)\n${contextSummary.trim()}\n\n` +
+      "The messages that follow are the most recent turns, verbatim. Treat the summary above " +
+      "as established context.";
+  }
   // Tell the model which plugin tools it actually has, so it calls them instead
   // of guessing. Weaker tool-callers ignore tools they're not told about.
   if (toolNames && toolNames.length > 0) {
@@ -173,6 +220,9 @@ export const streamMessage = async ({
   thinking,
   skills,
   webMode,
+  contextSummary,
+  projectRoot,
+  planMode,
   abortSignal,
   onEvent
 }: StreamArgs): Promise<void> => {
@@ -253,7 +303,15 @@ export const streamMessage = async ({
     const agent = new Agent({
       id: "relay",
       name: "relay",
-      instructions: composeInstructions(activeTab, skills, pluginToolNames, webMode),
+      instructions: composeInstructions(
+        activeTab,
+        skills,
+        pluginToolNames,
+        webMode,
+        contextSummary,
+        projectRoot,
+        planMode
+      ),
       model,
       ...(tools ? { tools: tools as never } : {})
     });

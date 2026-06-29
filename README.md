@@ -17,6 +17,10 @@ open/Chinese models on equal footing with the usual suspects. Bring your own API
 a full **Code** workspace with real file editing, command execution, and
 human-in-the-loop permissions.
 
+<p align="center">
+  <img src="relay.gif" alt="Relay in action" width="800" />
+</p>
+
 ## ⚠️ Project status — early beta (expect rough edges)
 
 **Relay is an early public beta (think alpha/0.1).** It already does a lot and is

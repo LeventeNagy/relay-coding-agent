@@ -35,8 +35,21 @@ const components: Components = {
       </code>
     );
   },
-  a: ({ children, ...props }) => (
-    <a target="_blank" rel="noreferrer" {...props}>
+  // Open links in the user's real browser, not a child Electron window. We
+  // intercept the click and hand the URL to the OS (main also denies popups as a
+  // safety net), so target="_blank" never spawns an in-app window.
+  a: ({ children, href, ...props }) => (
+    <a
+      href={href}
+      rel="noreferrer"
+      onClick={(event) => {
+        event.preventDefault();
+        if (href) {
+          void window.plugins.openExternal(href);
+        }
+      }}
+      {...props}
+    >
       {children}
     </a>
   )

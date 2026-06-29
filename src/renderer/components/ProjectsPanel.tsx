@@ -9,6 +9,8 @@ interface ProjectsPanelProps {
   sessions: SessionSummary[];
   activeProjectId: string | null;
   activeSessionId: string | null;
+  /** Session ids with an in-flight run (shows a "working" dot). */
+  streamingSessionIds: string[];
   onSelectProject: (id: string) => void;
   onNewChat: (projectId: string) => void;
   onOpenSession: (id: string) => void;
@@ -25,6 +27,7 @@ export const ProjectsPanel = ({
   sessions,
   activeProjectId,
   activeSessionId,
+  streamingSessionIds,
   onSelectProject,
   onNewChat,
   onOpenSession,
@@ -149,7 +152,12 @@ export const ProjectsPanel = ({
                     key={session.id}
                   >
                     <button className="session-open" type="button" onClick={() => onOpenSession(session.id)}>
-                      <span className="session-title">{session.title}</span>
+                      <span className="session-title">
+                        {streamingSessionIds.includes(session.id) && (
+                          <span className="session-working" aria-label="Working" />
+                        )}
+                        {session.title}
+                      </span>
                       <span className="session-repo">{formatTime(session.updatedAt)}</span>
                     </button>
                     <button

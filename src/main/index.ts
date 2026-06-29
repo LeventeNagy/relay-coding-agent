@@ -151,6 +151,28 @@ const createWindow = (): void => {
     }
   });
 
+  // Links from chat/markdown must open in the user's real browser, never in a
+  // child Electron window. Deny all popups (target="_blank", window.open) and
+  // hand http(s) URLs to the OS; same-origin navigations (app/HMR) proceed.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    try {
+      const target = new URL(url);
+      const appOrigin = new URL(mainWindow.webContents.getURL()).origin;
+      if (target.origin !== appOrigin && /^https?:$/.test(target.protocol)) {
+        event.preventDefault();
+        void shell.openExternal(url);
+      }
+    } catch {
+      /* not a parseable URL — let Electron handle it */
+    }
+  });
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {

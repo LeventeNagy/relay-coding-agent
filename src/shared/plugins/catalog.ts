@@ -34,7 +34,7 @@ export const pluginCatalog: PluginCatalogEntry[] = [
   {
     id: "github",
     name: "GitHub",
-    description: "Search repos, read issues and PRs, and manage GitHub from chat.",
+    description: "Search repos, read issues and PRs, and manage GitHub in code projects.",
     category: "Developer Tools",
     featured: true,
     // GitHub's MCP server doesn't support OAuth dynamic client registration, so
@@ -143,6 +143,34 @@ export const pluginCatalog: PluginCatalogEntry[] = [
     argHints: [
       { label: "Connection string", placeholder: "postgresql://user:pass@host:5432/db" }
     ]
+  },
+  {
+    id: "supabase",
+    name: "Supabase",
+    description: "Query tables, run SQL, inspect schema, and manage your Supabase project.",
+    category: "Data & Research",
+    featured: true,
+    // Hosted remote MCP server with one-click OAuth (dynamic client
+    // registration) — same flow as Notion/Linear, no token to paste. Started
+    // read-only for safety; remove `?read_only=true` from the URL to let the
+    // agent write (it can also be scoped with `&project_ref=<id>`).
+    transport: "http",
+    auth: "oauth",
+    url: "https://mcp.supabase.com/mcp?read_only=true",
+    scope: "code"
+  },
+  {
+    id: "convex",
+    name: "Convex",
+    description: "Explore tables and data, read schema, and run functions on your Convex backend.",
+    category: "Data & Research",
+    featured: true,
+    // Ships in the Convex CLI; uses your local `npx convex login` session, so no
+    // token field. Point it at the project folder that has Convex configured.
+    scope: "code",
+    command: "npx",
+    args: ["-y", "convex@latest", "mcp", "start", "--project-dir"],
+    argHints: [{ label: "Project directory", placeholder: "C:\\\\projects\\\\my-app" }]
   }
 ];
 

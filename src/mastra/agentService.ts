@@ -1,6 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import type { AgentMessage, AgentStreamEvent, WebMode, WorkspaceMode } from "../shared/agent/types";
 import type { ProjectFramework, Source } from "../shared/projects/types";
+import { requiresThinking } from "../shared/agent/providers";
 
 const createId = (): string => {
   return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -393,17 +394,30 @@ export const streamMessage = async ({
       streamOptions.abortSignal = abortSignal;
     }
 
-    // Pass reasoning controls as provider options, namespaced by the model's
-    // provider slug. Mastra's OpenAI-compatible model maps `reasoningEffort` to
-    // `reasoning_effort` and spreads `thinking` verbatim into the request body.
-    if (thinking) {
+    // Pass reasoning controls as provider options. We send the block only when
+    // thinking is ON — omitting it is the correct "off" state. Exception: some
+    // Kimi models (e.g. kimi-k2.7-code) MANDATE reasoning and 400 ("only
+    // type=enabled is allowed") unless thinking is enabled, so force it for them.
+    const mustThink = requiresThinking(model);
+    if (thinking?.enabled || mustThink) {
       const slug = model.split("/")[0];
-      streamOptions.providerOptions = {
-        [slug]: {
-          thinking: { type: thinking.enabled ? "enabled" : "disabled" },
-          ...(thinking.enabled && thinking.effort ? { reasoningEffort: thinking.effort } : {})
-        }
-      };
+      // Moonshot/Kimi speak the Anthropic Messages format. Its adapter reads the
+      // canonical `anthropic` namespace (never the provider slug), and an enabled
+      // thinking block needs `budget_tokens` (< max_tokens, which defaults 4096).
+      if (slug === "moonshotai" || slug === "moonshotai-cn") {
+        streamOptions.providerOptions = {
+          anthropic: { thinking: { type: "enabled", budgetTokens: 2048 } }
+        };
+      } else {
+        // OpenAI-compatible reasoning providers (e.g. GLM/zai) read options under
+        // their slug and map `reasoningEffort` → `reasoning_effort`.
+        streamOptions.providerOptions = {
+          [slug]: {
+            thinking: { type: "enabled" },
+            ...(thinking?.enabled && thinking.effort ? { reasoningEffort: thinking.effort } : {})
+          }
+        };
+      }
     }
 
     console.log(

@@ -37,22 +37,29 @@ export const providerCatalog: ProviderInfo[] = [
   {
     name: "Moonshot / Kimi",
     variable: "MOONSHOT_API_KEY",
+    model: "moonshotai/kimi-k2-thinking",
+    note: "Kimi models on the global Moonshot platform (platform.moonshot.ai).",
+    plans: ["direct"]
+  },
+  {
+    name: "Moonshot China",
+    variable: "MOONSHOT_API_KEY",
     model: "moonshotai-cn/kimi-k2-thinking",
-    note: "Kimi models, including China endpoint variants.",
-    plans: ["china", "direct"]
+    note: "Kimi via the China endpoint (api.moonshot.cn) — needs a platform.moonshot.cn key, separate from the global one.",
+    plans: ["china"]
   },
   {
     name: "MiniMax",
     variable: "MINIMAX_API_KEY",
     model: "minimax/MiniMax-M2",
-    note: "MiniMax M-series chat and coding-capable models.",
+    note: "M-series models on the global MiniMax platform (api.minimax.io).",
     plans: ["direct"]
   },
   {
-    name: "MiniMax Token Plan",
+    name: "MiniMax China",
     variable: "MINIMAX_API_KEY",
     model: "minimax-cn-coding-plan/MiniMax-M2.5",
-    note: "MiniMax token/coding-plan route for high-context M-series models.",
+    note: "Token/coding-plan route via the China endpoint (api.minimaxi.com) — needs a China-platform key, separate from the global one.",
     plans: ["token plan", "coding plan", "china"]
   },
   {
@@ -148,6 +155,24 @@ export const reasoningCapsFor = (model: string | null): ReasoningCaps | null => 
     return { ns: slug, effortValues, defaultEffort: effortValues.length ? "max" : undefined };
   }
   return null;
+};
+
+/**
+ * Some Moonshot/Kimi models mandate extended thinking: the endpoint rejects the
+ * request unless `thinking.type` is "enabled" — both omitting it and sending
+ * "disabled" 400 with "only type=enabled is allowed for this model". The
+ * `-code` and `-thinking` Kimi variants are reasoning models; detect them so we
+ * always turn thinking on regardless of the user's toggle.
+ */
+export const requiresThinking = (model: string | null): boolean => {
+  if (!model) {
+    return false;
+  }
+  const [slug, ...rest] = model.split("/");
+  if (slug !== "moonshotai" && slug !== "moonshotai-cn") {
+    return false;
+  }
+  return /thinking|code/i.test(rest.join("/"));
 };
 
 /**

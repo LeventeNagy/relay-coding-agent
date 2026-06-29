@@ -42,9 +42,9 @@ interface ChatViewProps {
   skills: SkillsController;
   mode: WorkspaceMode;
   modeLabel: string;
-  /** Chat-eligible plugins (code-only ones are excluded) for the "+" menu toggles. */
-  chatPlugins: PluginSummary[];
-  /** Default active set (connected chat-plugins) when the chat hasn't chosen. */
+  /** Plugins selectable in this workspace (mode-filtered) for the "+" menu toggles. */
+  availablePlugins: PluginSummary[];
+  /** Default active set (connected eligible plugins) when the chat hasn't chosen. */
   defaultPluginIds: string[];
   /** Code mode: the active project's name (shown in the header). */
   projectName?: string;
@@ -226,7 +226,7 @@ export const ChatView = ({
   skills,
   mode,
   modeLabel,
-  chatPlugins,
+  availablePlugins,
   defaultPluginIds,
   projectName,
   onAddSkill,
@@ -783,21 +783,19 @@ export const ChatView = ({
                 </ul>
               </li>
 
-              {mode !== "code" && (
-              <>
               <li className="plus-section-label" role="presentation">
                 <Blocks size={13} />
                 <span>Plugins</span>
-                <span className="plus-section-hint">active in this chat</span>
+                <span className="plus-section-hint">active in this session</span>
               </li>
-              {chatPlugins.length === 0 ? (
+              {availablePlugins.length === 0 ? (
                 <li role="none">
                   <button role="menuitem" type="button" onClick={() => runPlusAction(onOpenPlugins)}>
                     <span className="plus-label plus-label-muted">Connect a plugin…</span>
                   </button>
                 </li>
               ) : (
-                chatPlugins.map((plugin) => {
+                availablePlugins.map((plugin) => {
                   const active = effectivePluginIds.includes(plugin.id);
                   const connected = plugin.status === "connected";
                   return (
@@ -828,6 +826,8 @@ export const ChatView = ({
                 </button>
               </li>
 
+              {mode !== "code" && (
+              <>
               <li className="plus-divider" role="separator" />
 
               <li role="none">

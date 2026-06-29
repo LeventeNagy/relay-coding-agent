@@ -78,15 +78,19 @@ export const App = (): ReactElement => {
     setActiveView("plugins");
   };
 
-  // Chat-eligible plugins (code-only ones like GitHub are hidden from chat), and
-  // the default active set for a new conversation = the connected ones.
-  const chatPlugins = useMemo(
-    () => plugins.installed.filter((p) => p.scope !== "code"),
-    [plugins.installed]
+  // Plugins selectable in the current workspace: chat hides code-only plugins
+  // (e.g. GitHub); code hides chat-only ones. "both"-scoped show in either. The
+  // default active set for a new conversation = the connected eligible ones.
+  const availablePlugins = useMemo(
+    () =>
+      plugins.installed.filter((p) =>
+        activeWorkspace === "code" ? p.scope !== "chat" : p.scope !== "code"
+      ),
+    [plugins.installed, activeWorkspace]
   );
   const defaultPluginIds = useMemo(
-    () => chatPlugins.filter((p) => p.enabled && p.status === "connected").map((p) => p.id),
-    [chatPlugins]
+    () => availablePlugins.filter((p) => p.enabled && p.status === "connected").map((p) => p.id),
+    [availablePlugins]
   );
 
   const chat = useSessions(
@@ -257,6 +261,7 @@ export const App = (): ReactElement => {
                 sessions={chat.sessions}
                 activeProjectId={activeProjectId}
                 activeSessionId={activeView === "settings" ? null : chat.activeSessionId}
+                streamingSessionIds={chat.streamingSessionIds}
                 onSelectProject={(id) =>
                   setActiveProjectId((current) => (current === id ? null : id))
                 }
@@ -286,10 +291,14 @@ export const App = (): ReactElement => {
               {chat.sessions.length === 0 && <p className="session-empty">No sessions yet</p>}
               {chat.sessions.map((session) => {
                 const isActive = session.id === chat.activeSessionId && activeView !== "settings";
+                const working = chat.streamingSessionIds.includes(session.id);
                 return (
                   <div className={isActive ? "session-row active" : "session-row"} key={session.id}>
                     <button className="session-open" type="button" onClick={() => openSession(session.id)}>
-                      <span className="session-title">{session.title}</span>
+                      <span className="session-title">
+                        {working && <span className="session-working" aria-label="Working" />}
+                        {session.title}
+                      </span>
                       <span className="session-repo">{relativeTime(session.updatedAt)}</span>
                     </button>
                     <button
@@ -352,7 +361,7 @@ export const App = (): ReactElement => {
                 skills={skills}
                 mode={activeWorkspace}
                 modeLabel={activeWorkspaceLabel}
-                chatPlugins={chatPlugins}
+                availablePlugins={availablePlugins}
                 defaultPluginIds={defaultPluginIds}
                 projectName={
                   activeWorkspace === "code"

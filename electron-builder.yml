@@ -1,0 +1,39 @@
+# electron-builder packaging config.
+#
+# This sets up the pipeline only — `pnpm dist` runs `electron-builder --dir`,
+# which produces an UNPACKED, runnable app for local validation without code
+# signing. Producing signed/notarized installers and auto-update feeds is a
+# deliberate follow-up once target platforms are chosen (see the roadmap):
+#   - Windows: target nsis + an OV/EV signing cert
+#   - macOS:   target dmg + Apple Developer ID signing + notarization
+#   - Linux:   target AppImage/deb
+appId: com.relaycoding.app
+productName: Relay
+copyright: Copyright © 2026 Levente Nagy
+
+directories:
+  output: release
+  buildResources: build
+
+# Deps are already installed by pnpm; don't let electron-builder re-run the
+# package manager (its install step trips over pnpm's ignored-build prompt).
+npmRebuild: false
+
+# electron-vite emits the bundled app into out/; ship that plus the manifest.
+# Production dependencies (incl. the externalized @mastra/* packages) are
+# included by electron-builder automatically.
+files:
+  - out/**/*
+  - package.json
+
+# A 512×512 PNG; electron-builder derives platform icons from it.
+icon: logo.png
+
+win:
+  target: nsis
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+linux:
+  target: AppImage
+  category: Development

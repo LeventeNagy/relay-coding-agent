@@ -1,36 +1,57 @@
 {
   "name": "relay-coding-agent",
   "version": "0.1.0",
-  "description": "Relay, a dark-mode Electron prototype for an AI coding agent using a Mastra-ready service boundary.",
+  "description": "Relay — an open-source, dark-mode Electron coding agent with first-class support for non-mainstream LLM providers (DeepSeek, Qwen, GLM, Kimi, MiniMax, and more).",
+  "author": "Levente Nagy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeventeNagy/relay-coding-agent.git"
+  },
   "main": "out/main/index.js",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm typecheck && electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dist": "pnpm build && electron-builder --dir --publish never"
   },
   "dependencies": {
-    "@mastra/core": "latest",
+    "@mastra/core": "1.46.0",
     "@mastra/mcp": "^1.12.0",
-    "@vitejs/plugin-react": "latest",
-    "electron-vite": "latest",
+    "@vitejs/plugin-react": "^6.0.3",
+    "electron-vite": "^5.0.0",
     "highlight.js": "^11.11.1",
-    "lucide-react": "latest",
+    "lucide-react": "^1.21.0",
     "mammoth": "^1.12.0",
-    "react": "latest",
-    "react-dom": "latest",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "react-markdown": "^9.1.0",
     "remark-gfm": "^4.0.1",
     "unpdf": "^1.6.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "electron": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9"
   }
 }

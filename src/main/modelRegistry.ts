@@ -40,7 +40,7 @@ export const getProviderModels = (): ProviderModels => {
       result[slug] = models;
     }
   } catch (error) {
-    // eslint-disable-next-line no-console
+     
     console.error("Failed to read Mastra provider registry:", error);
   }
   cache = result;
@@ -66,7 +66,7 @@ export const getProviderEnvVars = (): Record<string, string> => {
       }
     }
   } catch (error) {
-    // eslint-disable-next-line no-console
+     
     console.error("Failed to read provider env vars from registry:", error);
   }
   return result;

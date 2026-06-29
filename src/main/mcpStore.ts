@@ -22,8 +22,6 @@ interface PersistedShape {
   encrypted: boolean;
 }
 
-const emptyState: PersistedShape = { servers: [], encrypted: false };
-
 let cache: PersistedShape | null = null;
 
 const filePath = (): string => join(app.getPath("userData"), "relay-plugins.json");

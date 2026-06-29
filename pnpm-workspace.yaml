@@ -1,2 +1,5 @@
 allowBuilds:
+  # We package with nsis, not Squirrel.Windows, so electron-winstaller's build
+  # script isn't needed. esbuild's native binary is required.
+  electron-winstaller: false
   esbuild: true

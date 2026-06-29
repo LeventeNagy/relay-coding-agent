@@ -1,7 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, shell } from "electron";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { streamMessage } from "../mastra/agentService";
+import { installCrashHandlers } from "./logger";
 import { getProviderModels } from "./modelRegistry";
 import {
   applyKeysToEnv,
@@ -147,6 +148,11 @@ const createWindow = (): void => {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // sandbox stays off: a sandboxed preload must be CommonJS, but electron-vite
+      // emits an ESM preload here (project is "type": "module"), so enabling it
+      // breaks contextBridge exposure (window.* undefined). contextIsolation +
+      // nodeIntegration:false is the security baseline; sandbox needs a separate
+      // CJS-preload migration to enable safely.
       sandbox: false
     }
   });
@@ -176,6 +182,24 @@ const createWindow = (): void => {
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
+    // Lock down the packaged app with a CSP. Skipped in dev so Vite's HMR
+    // (inline scripts, eval, ws:) keeps working; the dev server is local/trusted.
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'"
+    ].join("; ");
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [csp] }
+      });
+    });
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
 };
@@ -467,6 +491,8 @@ const registerIpc = (): void => {
 };
 
 app.whenReady().then(() => {
+  // Log otherwise-fatal errors to userData/logs so packaged builds leave a trail.
+  installCrashHandlers();
   applyKeysToEnv();
   // Verify our catalog's API-key env vars still match Mastra's registry, so a
   // future drift surfaces loudly here instead of as a user's mystery auth fail.

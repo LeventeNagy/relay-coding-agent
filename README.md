@@ -37,6 +37,9 @@ coverage, and additional renderer hardening. Your API keys are **not** affected 
 any of this — they're encrypted on your own machine and never leave it (see the
 security model below).
 
+📣 **Follow [@_levyathan_](https://x.com/_levyathan_) on Twitter/X** for updates,
+progress, and release notes.
+
 ## Highlights
 
 - **Many providers, one router.** DeepSeek, Alibaba/Qwen (DashScope + coding/token

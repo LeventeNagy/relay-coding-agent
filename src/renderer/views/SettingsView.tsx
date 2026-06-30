@@ -1,18 +1,17 @@
 import { ReactElement, useMemo, useState } from "react";
-import { Check, ExternalLink, Eye, EyeOff, Globe, Search, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Eye, EyeOff, Globe, Plus, Search, Trash2 } from "lucide-react";
 import { credentialList } from "../../shared/agent/providers";
 import type { SettingsController } from "../hooks/useSettings";
+import type { PetsController } from "../hooks/usePets";
 import { Pet } from "../components/Pet";
-import { defaultPet } from "../pets/builtins";
-import type { PetState } from "../../shared/pets/types";
+import { PetImport } from "../components/PetImport";
 
 interface SettingsViewProps {
   settings: SettingsController;
+  pets: PetsController;
   petEnabled: boolean;
   onPetEnabledChange: (next: boolean) => void;
 }
-
-const PET_PREVIEW_STATES: PetState[] = ["idle", "working", "needsInput", "done", "error"];
 
 /**
  * Optional search-provider keys. Web search works keyless (DuckDuckGo); adding
@@ -36,6 +35,7 @@ const SEARCH_KEYS = [
 
 export const SettingsView = ({
   settings,
+  pets,
   petEnabled,
   onPetEnabledChange
 }: SettingsViewProps): ReactElement => {
@@ -44,6 +44,7 @@ export const SettingsView = ({
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -97,14 +98,66 @@ export const SettingsView = ({
           </label>
         </div>
         {petEnabled && (
-          <div className="pet-preview" aria-label="Pet states preview">
-            {PET_PREVIEW_STATES.map((state) => (
-              <figure key={state}>
-                <Pet pet={defaultPet} state={state} size={56} />
-                <figcaption>{state}</figcaption>
-              </figure>
-            ))}
-          </div>
+          <>
+            <div className="pet-picker" aria-label="Choose a pet">
+              {pets.pets.map((pet) => (
+                <div
+                  key={pet.id}
+                  className={pet.id === pets.activePetId ? "pet-card active" : "pet-card"}
+                >
+                  <button
+                    type="button"
+                    className="pet-card-pick"
+                    aria-pressed={pet.id === pets.activePetId}
+                    onClick={() => pets.setActivePet(pet.id)}
+                  >
+                    <Pet pet={pet} state="idle" size={56} />
+                    <span>{pet.name}</span>
+                  </button>
+                  {pet.custom && (
+                    <button
+                      type="button"
+                      className="pet-card-remove"
+                      aria-label={`Remove ${pet.name}`}
+                      onClick={() => void pets.removePet(pet.id)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {importing ? (
+              <PetImport
+                pickImage={pets.pickImage}
+                onImport={async (input) => {
+                  await pets.importPet(input);
+                  setImporting(false);
+                }}
+                onCancel={() => setImporting(false)}
+              />
+            ) : (
+              <button type="button" className="pet-add-btn" onClick={() => setImporting(true)}>
+                <Plus size={14} /> Import a pet
+              </button>
+            )}
+            <p className="pet-help">
+              Generate your own with an AI sprite-sheet tool (PixelLab, Musely, …) — see{" "}
+              <button
+                type="button"
+                className="pet-help-link"
+                onClick={() =>
+                  void window.plugins.openExternal(
+                    "https://github.com/LeventeNagy/relay-coding-agent/blob/main/docs/make-your-own-pet.md"
+                  )
+                }
+              >
+                Make your own pet
+              </button>
+              .
+            </p>
+          </>
         )}
       </section>
 

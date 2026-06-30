@@ -21,6 +21,7 @@ import type {
 } from "../shared/plugins/types";
 import type { Skill, SkillInput } from "../shared/skills/types";
 import type { Project, ProjectFramework, Source } from "../shared/projects/types";
+import type { Pet, PetImagePick, PetInput } from "../shared/pets/types";
 
 const agentApi = {
   /** Start a streaming run; returns the runId used to tag incoming events. */
@@ -167,6 +168,25 @@ const skillsApi = {
   }
 };
 
+const petsApi = {
+  /** List the user's imported pets (sheets resolved to data URLs). */
+  list(): Promise<Pet[]> {
+    return ipcRenderer.invoke("pets:list");
+  },
+  /** Open the native PNG picker; returns the chosen sheet + dimensions, or null. */
+  pickImage(): Promise<PetImagePick | null> {
+    return ipcRenderer.invoke("pets:pick-image");
+  },
+  /** Save (import) a pet; returns the refreshed list. */
+  save(input: PetInput): Promise<Pet[]> {
+    return ipcRenderer.invoke("pets:save", input);
+  },
+  /** Delete a user pet; returns the refreshed list. */
+  remove(id: string): Promise<Pet[]> {
+    return ipcRenderer.invoke("pets:remove", id);
+  }
+};
+
 const attachmentsApi = {
   /** Persist images / extract document text; returns attachment refs. */
   ingest(files: RawAttachment[]): Promise<Attachment[]> {
@@ -185,6 +205,7 @@ contextBridge.exposeInMainWorld("sessions", sessionsApi);
 contextBridge.exposeInMainWorld("plugins", pluginsApi);
 contextBridge.exposeInMainWorld("projects", projectsApi);
 contextBridge.exposeInMainWorld("skills", skillsApi);
+contextBridge.exposeInMainWorld("pets", petsApi);
 contextBridge.exposeInMainWorld("attachments", attachmentsApi);
 
 export type AgentApi = typeof agentApi;
@@ -195,3 +216,4 @@ export type SessionsApi = typeof sessionsApi;
 export type PluginsApi = typeof pluginsApi;
 export type ProjectsApi = typeof projectsApi;
 export type SkillsApi = typeof skillsApi;
+export type PetsApi = typeof petsApi;

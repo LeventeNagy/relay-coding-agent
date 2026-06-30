@@ -36,6 +36,7 @@ import {
   removeSource,
   touchProject
 } from "./projectStore";
+import { listPets, savePet, removePet, pickPetImage } from "./petStore";
 import { nativeTools } from "./nativeTools";
 import { buildCodingTools, type ApprovalRequest } from "./codingTools";
 import { prepareHistory } from "./contextManager";
@@ -53,6 +54,7 @@ import type {
   WorkspaceMode
 } from "../shared/agent/types";
 import type { PluginInput, PluginServerConfig } from "../shared/plugins/types";
+import type { PetInput } from "../shared/pets/types";
 import type { ProjectFramework, Source } from "../shared/projects/types";
 import type { SkillInput } from "../shared/skills/types";
 
@@ -300,6 +302,12 @@ const registerIpc = (): void => {
     removeProject(id);
     return listProjects();
   });
+
+  // --- Status pets (user-imported sprite sheets) ---
+  ipcMain.handle("pets:list", () => listPets());
+  ipcMain.handle("pets:pick-image", () => pickPetImage());
+  ipcMain.handle("pets:save", (_event, input: PetInput) => savePet(input));
+  ipcMain.handle("pets:remove", (_event, id: string) => removePet(id));
 
   // --- Skills (reusable instructions referenced with /<slug>) ---
   ipcMain.handle("skills:list", () => listSkills());

@@ -3,6 +3,7 @@
 import type {
   AgentApi,
   AttachmentsApi,
+  PetsApi,
   PluginsApi,
   ProjectsApi,
   ProvidersApi,
@@ -20,6 +21,7 @@ declare global {
     plugins: PluginsApi;
     projects: ProjectsApi;
     skills: SkillsApi;
+    pets: PetsApi;
     attachments: AttachmentsApi;
   }
 }

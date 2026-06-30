@@ -35,4 +35,24 @@ export interface Pet {
   manifest: PetManifest;
   /** Resolved URL of the sprite sheet (bundled asset URL or a `file://`/data URL). */
   sheetUrl: string;
+  /** True for user-imported pets (removable); absent/false for built-ins. */
+  custom?: boolean;
+}
+
+/** Payload the renderer sends to save (import) a user pet. */
+export interface PetInput {
+  /** Provide to overwrite an existing user pet; omit to create a new one. */
+  id?: string;
+  name: string;
+  manifest: PetManifest;
+  /** The sprite sheet as a `data:image/png;base64,…` URL. */
+  dataUrl: string;
+}
+
+/** Result of the native PNG picker: the chosen sheet plus its pixel dimensions. */
+export interface PetImagePick {
+  dataUrl: string;
+  width: number;
+  height: number;
+  fileName: string;
 }

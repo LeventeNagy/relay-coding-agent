@@ -26,7 +26,7 @@ import { availableModels } from "../shared/agent/providers";
 import { SourcesPanel } from "./components/SourcesPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Pet } from "./components/Pet";
-import { defaultPet } from "./pets/builtins";
+import { usePets } from "./hooks/usePets";
 import { useAgentStatus } from "./hooks/useAgentStatus";
 import type { WorkspaceMode } from "../shared/agent/types";
 import type { ProjectFramework } from "../shared/projects/types";
@@ -59,6 +59,7 @@ export const App = (): ReactElement => {
   const plugins = usePlugins();
   const projectsCtl = useProjects();
   const skills = useSkills();
+  const pets = usePets();
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>("chat");
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(true);
@@ -388,7 +389,12 @@ export const App = (): ReactElement => {
             )
           )}
           {activeView === "settings" && (
-            <SettingsView settings={settings} petEnabled={showPet} onPetEnabledChange={togglePet} />
+            <SettingsView
+              settings={settings}
+              pets={pets}
+              petEnabled={showPet}
+              onPetEnabledChange={togglePet}
+            />
           )}
           {activeView === "plugins" && (
             <PluginsView
@@ -411,7 +417,7 @@ export const App = (): ReactElement => {
           </ErrorBoundary>
           {showPet && showChat && (
             <div className="relay-pet-dock">
-              <Pet pet={defaultPet} state={petState} size={64} />
+              <Pet pet={pets.activePet} state={petState} size={64} />
             </div>
           )}
         </main>

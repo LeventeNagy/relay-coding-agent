@@ -1,0 +1,29 @@
+{
+  "name": "Sprocket",
+  "frameWidth": 48,
+  "frameHeight": 48,
+  "columns": 6,
+  "fps": 8,
+  "states": {
+    "idle": [
+      0,
+      5
+    ],
+    "working": [
+      6,
+      11
+    ],
+    "needsInput": [
+      12,
+      17
+    ],
+    "done": [
+      18,
+      23
+    ],
+    "error": [
+      24,
+      29
+    ]
+  }
+}

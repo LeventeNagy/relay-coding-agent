@@ -5,7 +5,7 @@ import globals from "globals";
 
 export default tseslint.config(
   {
-    ignores: ["out/**", "node_modules/**", "public/**", "*.config.*"]
+    ignores: ["out/**", "node_modules/**", "public/**", "*.config.*", "scripts/**"]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

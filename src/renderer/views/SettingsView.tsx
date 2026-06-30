@@ -2,10 +2,17 @@ import { ReactElement, useMemo, useState } from "react";
 import { Check, ExternalLink, Eye, EyeOff, Globe, Search, Trash2 } from "lucide-react";
 import { credentialList } from "../../shared/agent/providers";
 import type { SettingsController } from "../hooks/useSettings";
+import { Pet } from "../components/Pet";
+import { defaultPet } from "../pets/builtins";
+import type { PetState } from "../../shared/pets/types";
 
 interface SettingsViewProps {
   settings: SettingsController;
+  petEnabled: boolean;
+  onPetEnabledChange: (next: boolean) => void;
 }
+
+const PET_PREVIEW_STATES: PetState[] = ["idle", "working", "needsInput", "done", "error"];
 
 /**
  * Optional search-provider keys. Web search works keyless (DuckDuckGo); adding
@@ -27,7 +34,11 @@ const SEARCH_KEYS = [
   }
 ] as const;
 
-export const SettingsView = ({ settings }: SettingsViewProps): ReactElement => {
+export const SettingsView = ({
+  settings,
+  petEnabled,
+  onPetEnabledChange
+}: SettingsViewProps): ReactElement => {
   const { state, setKey, deleteKey } = settings;
   const credentials = useMemo(() => credentialList(), []);
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
@@ -66,6 +77,36 @@ export const SettingsView = ({ settings }: SettingsViewProps): ReactElement => {
             : "OS keychain unavailable — keys are stored locally without encryption on this machine."}
         </span>
       </header>
+
+      <section className="appearance-settings" aria-label="Appearance">
+        <div className="appearance-row">
+          <div className="appearance-copy">
+            <h3>Status pet</h3>
+            <p>
+              A little companion in the corner of the workspace that reacts to what the agent is
+              doing — idle, working, or done. Purely cosmetic.
+            </p>
+          </div>
+          <label className="pet-toggle">
+            <input
+              type="checkbox"
+              checked={petEnabled}
+              onChange={(event) => onPetEnabledChange(event.currentTarget.checked)}
+            />
+            <span>{petEnabled ? "On" : "Off"}</span>
+          </label>
+        </div>
+        {petEnabled && (
+          <div className="pet-preview" aria-label="Pet states preview">
+            {PET_PREVIEW_STATES.map((state) => (
+              <figure key={state}>
+                <Pet pet={defaultPet} state={state} size={56} />
+                <figcaption>{state}</figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="search-keys" aria-label="Web search">
         <div className="search-keys-head">

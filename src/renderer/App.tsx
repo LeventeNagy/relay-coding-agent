@@ -25,6 +25,9 @@ import { ProjectsPanel } from "./components/ProjectsPanel";
 import { availableModels } from "../shared/agent/providers";
 import { SourcesPanel } from "./components/SourcesPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Pet } from "./components/Pet";
+import { defaultPet } from "./pets/builtins";
+import { useAgentStatus } from "./hooks/useAgentStatus";
 import type { WorkspaceMode } from "../shared/agent/types";
 import type { ProjectFramework } from "../shared/projects/types";
 
@@ -66,6 +69,14 @@ export const App = (): ReactElement => {
   const [pluginsTab, setPluginsTab] = useState<"plugins" | "skills">("plugins");
   const [skillsAutoNew, setSkillsAutoNew] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  // Status pet visibility — a pure UI preference, kept in localStorage (no IPC).
+  const [showPet, setShowPet] = useState<boolean>(
+    () => (localStorage.getItem("relay:showPet") ?? "true") === "true"
+  );
+  const togglePet = (next: boolean): void => {
+    setShowPet(next);
+    localStorage.setItem("relay:showPet", String(next));
+  };
 
   const openPlugins = (): void => {
     setPluginsTab("plugins");
@@ -100,6 +111,8 @@ export const App = (): ReactElement => {
     activeWorkspace === "code" ? activeProjectId : null
   );
   const activeWorkspaceLabel = workspaceTabs.find((tab) => tab.id === activeWorkspace)?.label ?? "Chat";
+  // The pet reflects any in-flight run (including background sessions).
+  const petState = useAgentStatus(chat.streamingSessionIds.length > 0);
 
   // --- Project-aware session handlers (code mode) ---
   const openSessionInProject = (id: string): void => {
@@ -374,7 +387,9 @@ export const App = (): ReactElement => {
               />
             )
           )}
-          {activeView === "settings" && <SettingsView settings={settings} />}
+          {activeView === "settings" && (
+            <SettingsView settings={settings} petEnabled={showPet} onPetEnabledChange={togglePet} />
+          )}
           {activeView === "plugins" && (
             <PluginsView
               plugins={plugins}
@@ -394,6 +409,11 @@ export const App = (): ReactElement => {
             </button>
           )}
           </ErrorBoundary>
+          {showPet && showChat && (
+            <div className="relay-pet-dock">
+              <Pet pet={defaultPet} state={petState} size={64} />
+            </div>
+          )}
         </main>
         {showSources && activeProject && (
           <SourcesPanel

@@ -21,3 +21,9 @@ pnpm-debug.log*
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Local personal drafts (not part of the project)
+TWITTER_DRAFT.md
+TWITTER_POST.md
+HN_POST.md
+DISCORD_POST.md

@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
-import type { Pet as PetData, PetState } from "../../shared/pets/types";
+import {
+  PET_STATUS_LABEL,
+  type Pet as PetData,
+  type PetState,
+  type SheetPet
+} from "../../shared/pets/types";
 
 interface PetProps {
   pet: PetData;
   state: PetState;
-  /** Rendered width in px; height scales to keep the frame aspect. Defaults to frameWidth. */
+  /** Rendered width in px (height matches for images). Defaults to a sensible size. */
   size?: number;
   title?: string;
+  /** Show a speech bubble with the current status (hidden when idle). */
+  bubble?: boolean;
 }
 
 /**
- * Renders one frame of a sprite sheet and steps through the active state's frame
- * range at the manifest's fps. Frames are indexed row-major (index = row*columns
- * + col), so a state range may span rows. No animation library: we just move
- * `background-position` on an interval, which stays crisp with `image-rendering`.
+ * Steps through a sprite sheet's active state range at the manifest fps. Frames
+ * are indexed row-major (index = row*columns + col), so a range may span rows.
  */
-export const Pet = ({ pet, state, size, title }: PetProps): ReactElement => {
+const SheetView = ({ pet, state, size }: { pet: SheetPet; state: PetState; size?: number }): ReactElement => {
   const { manifest, sheetUrl } = pet;
   const { frameWidth, frameHeight, columns, fps } = manifest;
   const [start, end] = manifest.states[state] ?? manifest.states.idle;
@@ -26,8 +31,7 @@ export const Pet = ({ pet, state, size, title }: PetProps): ReactElement => {
   useEffect(() => {
     frameRef.current = start;
     setFrame(start);
-    const span = Math.max(1, end - start + 1);
-    if (span <= 1) {
+    if (end - start + 1 <= 1) {
       return;
     }
     const id = window.setInterval(() => {
@@ -42,10 +46,8 @@ export const Pet = ({ pet, state, size, title }: PetProps): ReactElement => {
   const row = Math.floor(frame / columns);
   const scale = (size ?? frameWidth) / frameWidth;
 
-  // Scale via background-size (not transform) so the element's layout box equals
-  // the rendered size and corner docking stays exact. Sheet height is left `auto`
-  // so the aspect — and therefore the row offset — stays correct without needing
-  // the row count in the manifest.
+  // Scale via background-size (not transform) so the layout box equals the
+  // rendered size; sheet height is `auto` so the row offset stays correct.
   const style: CSSProperties = {
     width: frameWidth * scale,
     height: frameHeight * scale,
@@ -53,14 +55,40 @@ export const Pet = ({ pet, state, size, title }: PetProps): ReactElement => {
     backgroundSize: `${columns * frameWidth * scale}px auto`,
     backgroundPosition: `-${col * frameWidth * scale}px -${row * frameHeight * scale}px`
   };
+  return <div className="relay-pet" style={style} />;
+};
 
+/** A single image, given life with a per-mood CSS animation. */
+const ImageView = ({
+  url,
+  state,
+  size
+}: {
+  url: string;
+  state: PetState;
+  size: number;
+}): ReactElement => (
+  <img
+    className={`relay-pet-img pet-anim-${state}`}
+    src={url}
+    width={size}
+    height={size}
+    alt=""
+    draggable={false}
+  />
+);
+
+/** Renders a pet (sprite sheet or single image) plus an optional status bubble. */
+export const Pet = ({ pet, state, size, title, bubble }: PetProps): ReactElement => {
+  const label = bubble ? PET_STATUS_LABEL[state] : null;
   return (
-    <div
-      className="relay-pet"
-      style={style}
-      role="img"
-      aria-label={title ?? `${manifest.name}: ${state}`}
-      title={title}
-    />
+    <div className="relay-pet-wrap" role="img" aria-label={title ?? `${pet.name}: ${state}`} title={title}>
+      {label && <div className={`relay-pet-bubble bubble-${state}`}>{label}</div>}
+      {pet.kind === "sheet" ? (
+        <SheetView pet={pet} state={state} size={size} />
+      ) : (
+        <ImageView url={pet.imageUrl} state={state} size={size ?? 72} />
+      )}
+    </div>
   );
 };

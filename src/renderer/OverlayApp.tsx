@@ -17,12 +17,5 @@ export const OverlayApp = (): ReactElement | null => {
     return null;
   }
 
-  return (
-    <Pet
-      pet={{ id: "overlay", name: update.name, manifest: update.manifest, sheetUrl: update.sheetUrl }}
-      state={update.state}
-      size={84}
-      title={`${update.name}: ${update.state}`}
-    />
-  );
+  return <Pet pet={update.pet} state={update.state} size={84} bubble title={update.pet.name} />;
 };

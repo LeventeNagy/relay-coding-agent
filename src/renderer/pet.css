@@ -1,0 +1,145 @@
+/* Pet visuals shared by the main window and the floating overlay window. Uses
+   literal colors (no CSS vars) because the overlay window doesn't load the app
+   theme. App-shell placement (dock, settings picker) lives in styles.css. */
+
+.relay-pet-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Sprite-sheet frame. */
+.relay-pet {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+/* Single-image pet. */
+.relay-pet-img {
+  display: block;
+  object-fit: contain;
+  transform-origin: center bottom;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
+}
+
+/* Speech bubble. */
+.relay-pet-bubble {
+  position: relative;
+  max-width: 160px;
+  padding: 4px 9px;
+  border-radius: 10px;
+  background: #f7f3e7;
+  color: #25251f;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  animation: pet-bubble-pop 0.18s ease-out;
+}
+
+/* Little tail pointing down to the pet. */
+.relay-pet-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  background: #f7f3e7;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.relay-pet-bubble.bubble-needsInput {
+  color: #9a6b00;
+}
+.relay-pet-bubble.bubble-done {
+  color: #1f7a44;
+}
+.relay-pet-bubble.bubble-error {
+  color: #b23b2e;
+}
+
+@keyframes pet-bubble-pop {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Per-mood motion for single-image pets. */
+.pet-anim-idle {
+  animation: pet-bob 2.4s ease-in-out infinite;
+}
+.pet-anim-working {
+  animation: pet-wiggle 0.7s ease-in-out infinite;
+}
+.pet-anim-needsInput {
+  animation: pet-pulse 0.9s ease-in-out infinite;
+}
+.pet-anim-done {
+  animation: pet-hop 0.7s ease-in-out infinite;
+}
+.pet-anim-error {
+  animation: pet-shake 0.4s ease-in-out infinite;
+}
+
+@keyframes pet-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes pet-wiggle {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes pet-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.09);
+  }
+}
+@keyframes pet-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-7px);
+  }
+  45% {
+    transform: translateY(0);
+  }
+  60% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes pet-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}

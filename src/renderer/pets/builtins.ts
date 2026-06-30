@@ -19,9 +19,9 @@ const sprocketManifest: PetManifest = {
   }
 };
 
-/** Pets that ship with Relay. Users add their own (Phase 2) alongside these. */
+/** Pets that ship with Relay. Users add their own alongside these. */
 export const builtinPets: Pet[] = [
-  { id: "sprocket", name: "Sprocket", manifest: sprocketManifest, sheetUrl: sprocketSheet }
+  { id: "sprocket", name: "Sprocket", kind: "sheet", manifest: sprocketManifest, sheetUrl: sprocketSheet }
 ];
 
 export const defaultPet: Pet = builtinPets[0];

@@ -215,8 +215,8 @@ const createWindow = (): void => {
 };
 
 // --- Floating pet overlay (always-on-top companion over other apps) ---
-const OVERLAY_W = 132;
-const OVERLAY_H = 132;
+const OVERLAY_W = 200;
+const OVERLAY_H = 150;
 let overlayWin: BrowserWindow | null = null;
 // Last pet/mood snapshot; replayed once the overlay finishes loading so it never
 // shows blank if `overlay:update` arrived before the window was ready.

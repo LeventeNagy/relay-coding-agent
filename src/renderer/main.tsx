@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles.css";
+import "./pet.css";
 
 /**
  * Last-resort overlay for errors that escape React (event handlers, async

@@ -130,12 +130,7 @@ export const App = (): ReactElement => {
   }, [floatActive]);
   useEffect(() => {
     if (floatActive) {
-      void window.overlay.update({
-        name: pets.activePet.name,
-        manifest: pets.activePet.manifest,
-        sheetUrl: pets.activePet.sheetUrl,
-        state: petState
-      });
+      void window.overlay.update({ pet: pets.activePet, state: petState });
     }
   }, [floatActive, pets.activePet, petState]);
 
@@ -443,7 +438,7 @@ export const App = (): ReactElement => {
           </ErrorBoundary>
           {showPet && showChat && (
             <div className="relay-pet-dock">
-              <Pet pet={pets.activePet} state={petState} size={64} />
+              <Pet pet={pets.activePet} state={petState} size={64} bubble />
             </div>
           )}
         </main>

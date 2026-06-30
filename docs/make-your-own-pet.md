@@ -2,10 +2,33 @@
 
 Relay's status pet is a little companion in the corner of the workspace that
 reacts to what the agent is doing — **idle**, **working**, **needs input**,
-**done**, **error**. It's just a **sprite sheet** (one PNG image holding a grid of
-frames), so you can generate your own with an AI pixel-art tool and drop it in.
+**done**, **error** — with a little speech bubble. There are two ways to make one.
 
-## 1. Generate a sprite sheet
+## Easiest: a single image
+
+You don't need any pixel-art skills or a sprite sheet. **Any PNG works** — a
+character, your logo, a mascot, even an emoji exported as a PNG. Relay adds the
+motion (a gentle bob, a wiggle while working, a hop when done, a shake on error)
+and shows the status in a speech bubble, so the picture itself doesn't need to
+change between moods.
+
+1. Open **Settings → Appearance** and make sure **Status pet** is on.
+2. Click **Import a pet**, keep the **Simple image** tab selected, and **Choose a PNG**.
+3. Give it a name, click through the mood buttons to preview the motion + bubble,
+   then **Save pet**.
+
+That's it. A transparent background looks best (so the pet floats cleanly), but
+it's not required.
+
+> Tip: any image generator (or even a favourite emoji/sticker saved as PNG) is a
+> perfectly good pet. Save it with a transparent background if you can.
+
+## Advanced: an animated sprite sheet
+
+For frame-by-frame pixel-art pets, use a **sprite sheet** (one PNG holding a grid
+of frames). This is more work but gives true animation per mood.
+
+### 1. Generate a sprite sheet
 
 Any tool that exports a PNG sprite sheet works. Good ones (they handle keeping the
 character consistent across frames, which is the hard part):
@@ -30,10 +53,10 @@ Aim for:
 
 You don't need all five — only `idle` is required; the rest fall back to it.
 
-## 2. Import it into Relay
+### 2. Import it into Relay
 
 1. Open **Settings → Appearance** and make sure **Status pet** is on.
-2. Click **Import a pet** → **Choose a sprite sheet (PNG)**.
+2. Click **Import a pet**, switch to the **Sprite sheet** tab, and **Choose a PNG**.
 3. Set the **frame width/height** to your frame size. The preview updates live —
    tweak until exactly **one clean frame** shows. The grid (columns × rows) and
    total frame count are computed for you.

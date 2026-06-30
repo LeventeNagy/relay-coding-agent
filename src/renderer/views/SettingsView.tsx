@@ -187,7 +187,7 @@ export const SettingsView = ({
               </button>
             )}
             <p className="pet-help">
-              Generate your own with an AI sprite-sheet tool (PixelLab, Musely, …) — see{" "}
+              Use any image as a pet (or an animated sprite sheet for pixel art) — see{" "}
               <button
                 type="button"
                 className="pet-help-link"

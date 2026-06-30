@@ -1,8 +1,11 @@
 /**
- * Status "pets": a small animated companion that mirrors the agent's state. The
- * art is a sprite sheet (one PNG, a grid of frames) so users can *generate* their
- * own with AI tools (PixelLab, Musely, …) and drop them in — the only contract is
- * this manifest describing the grid and which frame range plays for each state.
+ * Status "pets": a small animated companion that mirrors the agent's state.
+ *
+ * Two flavours, so creating one is easy:
+ *  - **image**: just a single picture (any PNG/emoji). Relay adds motion per
+ *    mood with CSS and shows a speech bubble — no sprite sheet needed.
+ *  - **sheet**: an animated sprite sheet (a grid of frames) for pixel-art pets,
+ *    described by a `PetManifest`. The advanced/power-user path.
  */
 
 /** The moods a pet can show, mapped from the agent's live status. */
@@ -28,28 +31,37 @@ export interface PetManifest {
   states: { idle: FrameRange } & Partial<Record<PetState, FrameRange>>;
 }
 
-/** A ready-to-render pet: its manifest plus a resolved sheet image URL. */
-export interface Pet {
+interface PetBase {
   id: string;
   name: string;
-  manifest: PetManifest;
-  /** Resolved URL of the sprite sheet (bundled asset URL or a `file://`/data URL). */
-  sheetUrl: string;
   /** True for user-imported pets (removable); absent/false for built-ins. */
   custom?: boolean;
 }
 
-/** Payload the renderer sends to save (import) a user pet. */
-export interface PetInput {
-  /** Provide to overwrite an existing user pet; omit to create a new one. */
-  id?: string;
-  name: string;
+/** An animated sprite-sheet pet (a grid of frames described by the manifest). */
+export interface SheetPet extends PetBase {
+  kind: "sheet";
   manifest: PetManifest;
-  /** The sprite sheet as a `data:image/png;base64,…` URL. */
-  dataUrl: string;
+  /** Resolved URL of the sprite sheet (bundled asset URL or a data URL). */
+  sheetUrl: string;
 }
 
-/** Result of the native PNG picker: the chosen sheet plus its pixel dimensions. */
+/** A single-image pet: one picture, animated by CSS per mood. */
+export interface ImagePet extends PetBase {
+  kind: "image";
+  /** Resolved URL of the picture (bundled asset URL or a data URL). */
+  imageUrl: string;
+}
+
+/** A ready-to-render pet. */
+export type Pet = SheetPet | ImagePet;
+
+/** Payload the renderer sends to save (import) a user pet. `dataUrl` is a PNG. */
+export type PetInput =
+  | { id?: string; kind: "sheet"; name: string; manifest: PetManifest; dataUrl: string }
+  | { id?: string; kind: "image"; name: string; dataUrl: string };
+
+/** Result of the native PNG picker: the chosen image plus its pixel dimensions. */
 export interface PetImagePick {
   dataUrl: string;
   width: number;
@@ -59,8 +71,15 @@ export interface PetImagePick {
 
 /** Snapshot pushed to the floating-overlay window: which pet + its current mood. */
 export interface OverlayUpdate {
-  name: string;
-  manifest: PetManifest;
-  sheetUrl: string;
+  pet: Pet;
   state: PetState;
 }
+
+/** Short text shown in the pet's speech bubble per mood (null = no bubble). */
+export const PET_STATUS_LABEL: Record<PetState, string | null> = {
+  idle: null,
+  working: "Working…",
+  needsInput: "Needs you!",
+  done: "Done ✓",
+  error: "Hit a snag"
+};

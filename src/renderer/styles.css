@@ -3061,6 +3061,12 @@ button {
   background: var(--sidebar-strong);
 }
 
+/* Settings sub-tab bar (reuses the .plugins-tabs pill look). */
+.settings-tabs {
+  width: fit-content;
+  margin-bottom: 14px;
+}
+
 .plugins-tabs button {
   padding: 6px 16px;
   border-radius: 999px;

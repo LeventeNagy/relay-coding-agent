@@ -15,6 +15,14 @@ interface SettingsViewProps {
   onPetFloatChange: (next: boolean) => void;
 }
 
+type SettingsTab = "providers" | "search" | "appearance";
+
+const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; eyebrow: string; title: string }> = [
+  { id: "providers", label: "Model providers", eyebrow: "Mastra providers", title: "Connect model keys" },
+  { id: "search", label: "Web search", eyebrow: "Web search", title: "Search provider keys" },
+  { id: "appearance", label: "Appearance", eyebrow: "Appearance", title: "Status pet" }
+];
+
 /**
  * Optional search-provider keys. Web search works keyless (DuckDuckGo); adding
  * one of these upgrades quality. Stored in the same encrypted key store as model
@@ -49,6 +57,7 @@ export const SettingsView = ({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>("providers");
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -71,18 +80,37 @@ export const SettingsView = ({
     }
   };
 
+  const activeMeta = SETTINGS_TABS.find((t) => t.id === tab) ?? SETTINGS_TABS[0];
+
   return (
-    <section className="settings-view" aria-label="Provider settings">
+    <section className="settings-view" aria-label="Settings">
       <header className="settings-header">
-        <p>Mastra providers</p>
-        <h2>Connect model keys</h2>
-        <span>
-          {state.secureStorageAvailable
-            ? "Keys are encrypted with your OS keychain and injected into the agent at runtime."
-            : "OS keychain unavailable — keys are stored locally without encryption on this machine."}
-        </span>
+        <div className="settings-tabs plugins-tabs" role="tablist" aria-label="Settings sections">
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={tab === t.id ? "active" : ""}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <p>{activeMeta.eyebrow}</p>
+        <h2>{activeMeta.title}</h2>
+        {tab !== "appearance" && (
+          <span>
+            {state.secureStorageAvailable
+              ? "Keys are encrypted with your OS keychain and injected into the agent at runtime."
+              : "OS keychain unavailable — keys are stored locally without encryption on this machine."}
+          </span>
+        )}
       </header>
 
+      {tab === "appearance" && (
       <section className="appearance-settings" aria-label="Appearance">
         <div className="appearance-row">
           <div className="appearance-copy">
@@ -176,7 +204,9 @@ export const SettingsView = ({
           </>
         )}
       </section>
+      )}
 
+      {tab === "search" && (
       <section className="search-keys" aria-label="Web search">
         <div className="search-keys-head">
           <Globe size={15} />
@@ -259,7 +289,10 @@ export const SettingsView = ({
           })}
         </div>
       </section>
+      )}
 
+      {tab === "providers" && (
+      <>
       <label className="provider-search">
         <Search size={14} />
         <input
@@ -349,6 +382,8 @@ export const SettingsView = ({
         })}
         {filtered.length === 0 && <div className="empty-provider-search">No providers match that search.</div>}
       </div>
+      </>
+      )}
     </section>
   );
 };

@@ -3743,6 +3743,34 @@ button {
   font-size: 11px;
 }
 
+/* "Float over other windows" toggle. */
+.pet-float-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--body);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.pet-float-row input {
+  margin-top: 1px;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+
+.pet-float-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 /* Pet picker grid (built-in + user pets). */
 .pet-picker {
   display: flex;

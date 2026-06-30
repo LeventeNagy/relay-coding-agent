@@ -1,5 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, shell } from "electron";
-import { existsSync } from "node:fs";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, session, shell } from "electron";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { streamMessage } from "../mastra/agentService";
 import { installCrashHandlers } from "./logger";
@@ -54,7 +54,7 @@ import type {
   WorkspaceMode
 } from "../shared/agent/types";
 import type { PluginInput, PluginServerConfig } from "../shared/plugins/types";
-import type { PetInput } from "../shared/pets/types";
+import type { OverlayUpdate, PetInput } from "../shared/pets/types";
 import type { ProjectFramework, Source } from "../shared/projects/types";
 import type { SkillInput } from "../shared/skills/types";
 
@@ -181,6 +181,14 @@ const createWindow = (): void => {
     }
   });
 
+  // The decorative overlay must not keep the app alive once the main window is
+  // gone (otherwise window-all-closed never fires on Windows/Linux).
+  mainWindow.on("closed", () => {
+    if (overlayWin && !overlayWin.isDestroyed()) {
+      overlayWin.close();
+    }
+  });
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -204,6 +212,87 @@ const createWindow = (): void => {
     });
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
+};
+
+// --- Floating pet overlay (always-on-top companion over other apps) ---
+const OVERLAY_W = 132;
+const OVERLAY_H = 132;
+let overlayWin: BrowserWindow | null = null;
+// Last pet/mood snapshot; replayed once the overlay finishes loading so it never
+// shows blank if `overlay:update` arrived before the window was ready.
+let overlayPayload: OverlayUpdate | null = null;
+
+const overlayBoundsFile = (): string => join(app.getPath("userData"), "relay-overlay.json");
+
+const loadOverlayPosition = (): { x: number; y: number } | null => {
+  try {
+    const parsed = JSON.parse(readFileSync(overlayBoundsFile(), "utf8")) as { x?: number; y?: number };
+    if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+      return { x: parsed.x, y: parsed.y };
+    }
+  } catch {
+    /* no saved position yet */
+  }
+  return null;
+};
+
+const saveOverlayPosition = (x: number, y: number): void => {
+  try {
+    writeFileSync(overlayBoundsFile(), JSON.stringify({ x, y }), "utf8");
+  } catch {
+    /* best-effort */
+  }
+};
+
+const createOverlayWindow = (): BrowserWindow => {
+  const area = screen.getPrimaryDisplay().workArea;
+  const saved = loadOverlayPosition();
+  const win = new BrowserWindow({
+    width: OVERLAY_W,
+    height: OVERLAY_H,
+    x: saved?.x ?? area.x + area.width - OVERLAY_W - 24,
+    y: saved?.y ?? area.y + area.height - OVERLAY_H - 24,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    skipTaskbar: true,
+    fullscreenable: false,
+    hasShadow: false,
+    backgroundColor: "#00000000",
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  win.setAlwaysOnTop(true, "floating");
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Never spawn child windows or navigate away from the overlay entry.
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.on("moved", () => {
+    const [x, y] = win.getPosition();
+    saveOverlayPosition(x, y);
+  });
+  win.on("closed", () => {
+    if (overlayWin === win) {
+      overlayWin = null;
+    }
+  });
+  win.webContents.on("did-finish-load", () => {
+    if (overlayPayload) {
+      win.webContents.send("overlay:update", overlayPayload);
+    }
+  });
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/overlay.html`);
+  } else {
+    void win.loadFile(join(__dirname, "../renderer/overlay.html"));
+  }
+  return win;
 };
 
 const registerIpc = (): void => {
@@ -308,6 +397,25 @@ const registerIpc = (): void => {
   ipcMain.handle("pets:pick-image", () => pickPetImage());
   ipcMain.handle("pets:save", (_event, input: PetInput) => savePet(input));
   ipcMain.handle("pets:remove", (_event, id: string) => removePet(id));
+
+  // Floating pet overlay: the main window toggles visibility and pushes snapshots.
+  ipcMain.handle("overlay:set-visible", (_event, visible: boolean) => {
+    if (visible) {
+      if (!overlayWin || overlayWin.isDestroyed()) {
+        overlayWin = createOverlayWindow();
+      }
+      overlayWin.showInactive();
+    } else if (overlayWin && !overlayWin.isDestroyed()) {
+      overlayWin.close();
+      overlayWin = null;
+    }
+  });
+  ipcMain.handle("overlay:update", (_event, payload: OverlayUpdate) => {
+    overlayPayload = payload;
+    if (overlayWin && !overlayWin.isDestroyed()) {
+      overlayWin.webContents.send("overlay:update", payload);
+    }
+  });
 
   // --- Skills (reusable instructions referenced with /<slug>) ---
   ipcMain.handle("skills:list", () => listSkills());

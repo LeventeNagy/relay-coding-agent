@@ -78,6 +78,14 @@ export const App = (): ReactElement => {
     setShowPet(next);
     localStorage.setItem("relay:showPet", String(next));
   };
+  // Float the pet over other windows (always-on-top overlay).
+  const [floatPet, setFloatPet] = useState<boolean>(
+    () => (localStorage.getItem("relay:floatPet") ?? "false") === "true"
+  );
+  const toggleFloat = (next: boolean): void => {
+    setFloatPet(next);
+    localStorage.setItem("relay:floatPet", String(next));
+  };
 
   const openPlugins = (): void => {
     setPluginsTab("plugins");
@@ -114,6 +122,22 @@ export const App = (): ReactElement => {
   const activeWorkspaceLabel = workspaceTabs.find((tab) => tab.id === activeWorkspace)?.label ?? "Chat";
   // The pet reflects any in-flight run (including background sessions).
   const petState = useAgentStatus(chat.streamingSessionIds.length > 0);
+
+  // Drive the always-on-top overlay window from the same pet + status.
+  const floatActive = showPet && floatPet;
+  useEffect(() => {
+    void window.overlay.setVisible(floatActive);
+  }, [floatActive]);
+  useEffect(() => {
+    if (floatActive) {
+      void window.overlay.update({
+        name: pets.activePet.name,
+        manifest: pets.activePet.manifest,
+        sheetUrl: pets.activePet.sheetUrl,
+        state: petState
+      });
+    }
+  }, [floatActive, pets.activePet, petState]);
 
   // --- Project-aware session handlers (code mode) ---
   const openSessionInProject = (id: string): void => {
@@ -394,6 +418,8 @@ export const App = (): ReactElement => {
               pets={pets}
               petEnabled={showPet}
               onPetEnabledChange={togglePet}
+              petFloat={floatPet}
+              onPetFloatChange={toggleFloat}
             />
           )}
           {activeView === "plugins" && (

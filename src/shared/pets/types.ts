@@ -56,3 +56,11 @@ export interface PetImagePick {
   height: number;
   fileName: string;
 }
+
+/** Snapshot pushed to the floating-overlay window: which pet + its current mood. */
+export interface OverlayUpdate {
+  name: string;
+  manifest: PetManifest;
+  sheetUrl: string;
+  state: PetState;
+}

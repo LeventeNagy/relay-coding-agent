@@ -21,7 +21,7 @@ import type {
 } from "../shared/plugins/types";
 import type { Skill, SkillInput } from "../shared/skills/types";
 import type { Project, ProjectFramework, Source } from "../shared/projects/types";
-import type { Pet, PetImagePick, PetInput } from "../shared/pets/types";
+import type { OverlayUpdate, Pet, PetImagePick, PetInput } from "../shared/pets/types";
 
 const agentApi = {
   /** Start a streaming run; returns the runId used to tag incoming events. */
@@ -187,6 +187,27 @@ const petsApi = {
   }
 };
 
+// Host controls used by the MAIN window to drive the floating-pet overlay.
+const overlayApi = {
+  /** Show or hide (and create/destroy) the always-on-top pet window. */
+  setVisible(visible: boolean): Promise<void> {
+    return ipcRenderer.invoke("overlay:set-visible", visible);
+  },
+  /** Push the current pet + mood to the overlay (cached + replayed on load). */
+  update(payload: OverlayUpdate): Promise<void> {
+    return ipcRenderer.invoke("overlay:update", payload);
+  }
+};
+
+// Subscription used by the OVERLAY window to receive pet/mood snapshots.
+const overlayClientApi = {
+  onUpdate(listener: (payload: OverlayUpdate) => void): () => void {
+    const handler = (_event: unknown, payload: OverlayUpdate): void => listener(payload);
+    ipcRenderer.on("overlay:update", handler);
+    return () => ipcRenderer.removeListener("overlay:update", handler);
+  }
+};
+
 const attachmentsApi = {
   /** Persist images / extract document text; returns attachment refs. */
   ingest(files: RawAttachment[]): Promise<Attachment[]> {
@@ -206,6 +227,8 @@ contextBridge.exposeInMainWorld("plugins", pluginsApi);
 contextBridge.exposeInMainWorld("projects", projectsApi);
 contextBridge.exposeInMainWorld("skills", skillsApi);
 contextBridge.exposeInMainWorld("pets", petsApi);
+contextBridge.exposeInMainWorld("overlay", overlayApi);
+contextBridge.exposeInMainWorld("overlayClient", overlayClientApi);
 contextBridge.exposeInMainWorld("attachments", attachmentsApi);
 
 export type AgentApi = typeof agentApi;
@@ -217,3 +240,5 @@ export type PluginsApi = typeof pluginsApi;
 export type ProjectsApi = typeof projectsApi;
 export type SkillsApi = typeof skillsApi;
 export type PetsApi = typeof petsApi;
+export type OverlayApi = typeof overlayApi;
+export type OverlayClientApi = typeof overlayClientApi;

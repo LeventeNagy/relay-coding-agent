@@ -1,0 +1,30 @@
+/* The floating-pet window is transparent and frameless; the whole surface is a
+   drag handle so the user can reposition it over other apps. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+.overlay-body {
+  -webkit-app-region: drag;
+  user-select: none;
+  cursor: grab;
+}
+
+#overlay-root {
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Sprite-sheet frame (mirrors .relay-pet in styles.css; the overlay window does
+   not load the main stylesheet). */
+.relay-pet {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+}

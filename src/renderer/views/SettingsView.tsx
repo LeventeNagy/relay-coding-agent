@@ -11,6 +11,8 @@ interface SettingsViewProps {
   pets: PetsController;
   petEnabled: boolean;
   onPetEnabledChange: (next: boolean) => void;
+  petFloat: boolean;
+  onPetFloatChange: (next: boolean) => void;
 }
 
 /**
@@ -37,7 +39,9 @@ export const SettingsView = ({
   settings,
   pets,
   petEnabled,
-  onPetEnabledChange
+  onPetEnabledChange,
+  petFloat,
+  onPetFloatChange
 }: SettingsViewProps): ReactElement => {
   const { state, setKey, deleteKey } = settings;
   const credentials = useMemo(() => credentialList(), []);
@@ -99,6 +103,18 @@ export const SettingsView = ({
         </div>
         {petEnabled && (
           <>
+            <label className="pet-float-row">
+              <input
+                type="checkbox"
+                checked={petFloat}
+                onChange={(event) => onPetFloatChange(event.currentTarget.checked)}
+              />
+              <span>
+                Float over other windows
+                <small>Keep the pet visible on top of your editor/browser while runs stream.</small>
+              </span>
+            </label>
+
             <div className="pet-picker" aria-label="Choose a pet">
               {pets.pets.map((pet) => (
                 <div
